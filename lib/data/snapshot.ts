@@ -15,6 +15,15 @@ interface RpcRow {
   source_rows: number;
 }
 
+export interface OptimizationMeta {
+  id: string;
+  created_at: string;
+  run_name: string;
+  status: "pending" | "running" | "succeeded" | "failed";
+  kpis: any;
+  notes?: string;
+}
+
 async function readFromSupabase(): Promise<SnapshotRecord | null> {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const hasKey =
@@ -32,6 +41,24 @@ async function readFromSupabase(): Promise<SnapshotRecord | null> {
   const row = rows[0];
   if (!row) return null;
   return { payload: row.payload, taken_at: row.taken_at };
+}
+
+async function readOptimizationFromSupabase(optId: string): Promise<SnapshotRecord | null> {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const hasKey =
+    !!process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
+    !!process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!url || !hasKey) return null;
+
+  const supabase = createReadClient();
+  const { data, error } = await supabase.rpc("get_optimization", { target_id: optId });
+
+  if (error) {
+    console.error(`Failed to load optimization ${optId}: ${error.message}`);
+    return null;
+  }
+  if (!data) return null;
+  return { payload: data as Snapshot, taken_at: new Date().toISOString() };
 }
 
 // Local-file fallback. Used in dev (no DB needed to run `next dev`) and as a
@@ -74,7 +101,13 @@ async function readFromLocalFile(): Promise<SnapshotRecord | null> {
   }
 }
 
-async function loadSnapshotRecord(): Promise<SnapshotRecord> {
+async function loadSnapshotRecord(optId?: string): Promise<SnapshotRecord> {
+  if (optId) {
+    const optRecord = await readOptimizationFromSupabase(optId);
+    if (optRecord) return optRecord;
+    console.warn(`Optimization run ${optId} not found, falling back to default baseline.`);
+  }
+
   const fromDb = await readFromSupabase();
   if (fromDb) return fromDb;
   const fromFile = await readFromLocalFile();
@@ -84,24 +117,46 @@ async function loadSnapshotRecord(): Promise<SnapshotRecord> {
   );
 }
 
-export async function getLatestSnapshot(): Promise<Snapshot> {
+export async function getLatestSnapshot(optId?: string): Promise<Snapshot> {
   "use cache";
   cacheTag(SNAPSHOT_TAG);
   cacheLife("hours");
 
-  const record = await loadSnapshotRecord();
+  const record = await loadSnapshotRecord(optId);
   return record.payload;
 }
 
-export async function getSnapshotTakenAt(): Promise<string | null> {
+export async function getSnapshotTakenAt(optId?: string): Promise<string | null> {
   "use cache";
   cacheTag(SNAPSHOT_TAG);
   cacheLife("hours");
 
   try {
-    const record = await loadSnapshotRecord();
+    const record = await loadSnapshotRecord(optId);
     return record.taken_at;
   } catch {
     return null;
+  }
+}
+
+export async function listOptimizations(): Promise<OptimizationMeta[]> {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const hasKey =
+    !!process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
+    !!process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!url || !hasKey) return [];
+
+  try {
+    const supabase = createReadClient();
+    const { data, error } = await supabase.rpc("list_optimizations");
+
+    if (error) {
+      console.error(`Failed to list optimizations from database: ${error.message}`);
+      return [];
+    }
+    return (data ?? []) as OptimizationMeta[];
+  } catch (err) {
+    console.error("Failed to list optimizations:", err);
+    return [];
   }
 }

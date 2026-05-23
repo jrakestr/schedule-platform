@@ -1,12 +1,13 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQueryState, parseAsFloat, parseAsStringEnum } from "nuqs";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { KeyboardShortcuts } from "@/components/keyboard-shortcuts";
 import { SiteHeader } from "@/components/header/site-header";
 import { CoverageTab } from "@/components/tabs/coverage";
 import { ValidationTab } from "@/components/tabs/validation";
+import { RaciTab } from "@/components/tabs/raci";
 import { SupervisorTab } from "@/components/tabs/supervisor";
 import { PodsTab } from "@/components/tabs/pods";
 import { ShiftsTab } from "@/components/tabs/shifts";
@@ -16,15 +17,22 @@ import { OptimizerTab } from "@/components/tabs/optimizer";
 import { TAB_IDS, TAB_LABELS, type TabId } from "@/components/tab-ids";
 import type { Snapshot } from "@/lib/data/types";
 import { cn } from "@/lib/utils";
+import type { OptimizationMeta } from "@/lib/data/snapshot";
 
 interface PlatformShellProps {
   snapshot: Snapshot;
   takenAt: string | null;
+  optimizations: OptimizationMeta[];
 }
 
-export function PlatformShell({ snapshot, takenAt }: PlatformShellProps) {
+export function PlatformShell({ snapshot, takenAt, optimizations }: PlatformShellProps) {
   // Local state to support mutations inside the OptimizerTab
   const [activeSnapshot, setActiveSnapshot] = useState<Snapshot>(snapshot);
+
+  // Synchronize local state with server-side snapshot changes
+  useEffect(() => {
+    setActiveSnapshot(snapshot);
+  }, [snapshot]);
 
   const [tab, setTab] = useQueryState<TabId>(
     "tab",
@@ -45,6 +53,7 @@ export function PlatformShell({ snapshot, takenAt }: PlatformShellProps) {
         leadPct={leadPct}
         setLeadPct={setLeadPct}
         onJump={setTab}
+        optimizations={optimizations}
       />
 
       <Tabs value={tab} onValueChange={(v) => setTab(v as TabId)}>
@@ -73,13 +82,14 @@ export function PlatformShell({ snapshot, takenAt }: PlatformShellProps) {
         <main className="mx-auto max-w-7xl px-6 py-6">
           {tab === "coverage" && <CoverageTab snapshot={activeSnapshot} leadPct={leadPct} />}
           {tab === "validation" && <ValidationTab snapshot={activeSnapshot} leadPct={leadPct} />}
+          {tab === "raci" && <RaciTab />}
           {tab === "supervisor" && <SupervisorTab snapshot={activeSnapshot} leadPct={leadPct} />}
           {tab === "pods" && <PodsTab snapshot={activeSnapshot} />}
           {tab === "shifts" && <ShiftsTab snapshot={activeSnapshot} />}
           {tab === "cubicles" && <CubiclesTab snapshot={activeSnapshot} />}
           {tab === "roster" && <RosterTab snapshot={activeSnapshot} />}
           {tab === "optimizer" && (
-            <OptimizerTab snapshot={activeSnapshot} onUpdateSnapshot={setActiveSnapshot} />
+            <OptimizerTab snapshot={activeSnapshot} onUpdateSnapshot={setActiveSnapshot} optimizations={optimizations} />
           )}
         </main>
       </Tabs>

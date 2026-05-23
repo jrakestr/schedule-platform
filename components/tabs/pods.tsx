@@ -16,7 +16,7 @@ import {
   useSortable,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { GripVertical, RefreshCw, Users } from "lucide-react";
+import { GripVertical, RefreshCw, Users, ShieldAlert } from "lucide-react";
 import { SectionCard } from "@/components/shared/section-card";
 import {
   Accordion,
@@ -28,7 +28,9 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { shiftColor } from "@/lib/compute/colors";
-import type { Agent, Pod, Snapshot } from "@/lib/data/types";
+import type { Agent, Pod, Snapshot, DOW } from "@/lib/data/types";
+import { agentSupply } from "@/lib/compute/supply";
+import { DayTabs } from "@/components/shared/day-tabs";
 
 interface PodsTabProps {
   snapshot: Snapshot;
@@ -109,6 +111,8 @@ export function PodsTab({ snapshot }: PodsTabProps) {
           )}
         </div>
       </SectionCard>
+
+      <PodHourGapMatrix snapshot={snapshot} order={order} />
 
       <DndContext
         sensors={sensors}
@@ -237,5 +241,136 @@ function PodCard({
         </Accordion>
       </CardContent>
     </Card>
+  );
+}
+
+function PodHourGapMatrix({
+  snapshot,
+  order,
+}: {
+  snapshot: Snapshot;
+  order: string[];
+}) {
+  const [day, setDay] = useState<DOW>("Mon");
+
+  const matrixData = useMemo(() => {
+    const podHourly: Record<string, number[]> = {};
+    for (const podName of order) {
+      const pod = snapshot.pods[podName];
+      if (!pod) continue;
+      const members = pod.members
+        .map((id) => snapshot.agents.find((a) => a.id === id))
+        .filter((a): a is Agent => !!a);
+      const supply = agentSupply(members, day, 1.0);
+      podHourly[podName] = Array.from({ length: 24 }, (_, h) =>
+        Number(((supply[h * 2] + supply[h * 2 + 1]) / 2).toFixed(2))
+      );
+    }
+
+    const systemRequiredCombined = Array.from({ length: 24 }, (_, h) => {
+      const req = snapshot.volume.required_on_phones.Combined[day] || [];
+      return ((req[h * 2] || 0) + (req[h * 2 + 1] || 0)) / 2;
+    });
+
+    return {
+      podHourly,
+      systemRequiredCombined,
+    };
+  }, [snapshot, day, order]);
+
+  function getGapCellClass(gap: number): string {
+    if (gap === 0) {
+      return "bg-emerald-50 dark:bg-emerald-950/20 text-emerald-700 dark:text-emerald-400 border border-emerald-150 dark:border-emerald-900/40 font-medium";
+    } else if (gap < 0) {
+      const val = Math.abs(gap);
+      if (val >= 1.5) {
+        return "bg-rose-950/90 text-rose-200 border border-rose-800 font-bold";
+      } else if (val >= 0.5) {
+        return "bg-rose-900/50 text-rose-200 border border-rose-900/60 font-medium";
+      } else {
+        return "bg-rose-900/20 text-rose-300 border border-rose-900/30";
+      }
+    } else {
+      if (gap >= 1.5) {
+        return "bg-blue-950/90 text-blue-200 border border-blue-800 font-bold";
+      } else if (gap >= 0.5) {
+        return "bg-blue-900/50 text-blue-200 border border-blue-900/60 font-medium";
+      } else {
+        return "bg-blue-900/20 text-blue-300 border border-blue-900/30";
+      }
+    }
+  }
+
+  return (
+    <SectionCard
+      title="Pod x Hour Staffing Gap Matrix"
+      description="Compare pod schedule coverage against their 1/6 share of system Erlang required. Dynamic gradient shows: Deep Red (Under), Sage Green (Optimal), Deep Blue (Over)."
+      toolbar={<DayTabs day={day} onChange={setDay} />}
+    >
+      <div className="overflow-x-auto">
+        <table className="text-xs border-separate border-spacing-px min-w-full font-sans">
+          <thead>
+            <tr>
+              <th className="text-left p-2 sticky left-0 bg-card font-semibold text-muted-foreground border-b min-w-[140px]">Pod</th>
+              {snapshot.meta.hours.map((h) => (
+                <th
+                  key={h}
+                  className="p-1.5 text-center text-[10px] text-muted-foreground font-mono border-b w-8"
+                >
+                  {h.slice(0, 2)}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {order.map((podName) => {
+              const hourly = matrixData.podHourly[podName] || new Array(24).fill(0);
+              return (
+                <tr key={podName} className="hover:bg-muted/30">
+                  <td className="p-2 sticky left-0 bg-card border-r font-medium text-foreground text-xs">
+                    {podName}
+                  </td>
+                  {hourly.map((val, h) => {
+                    const reqShare = matrixData.systemRequiredCombined[h] / 6;
+                    const gap = val - reqShare;
+                    return (
+                      <td
+                        key={h}
+                        className={`p-1.5 text-center num text-[10px] rounded-sm tabular-nums ${getGapCellClass(gap)}`}
+                        title={`${podName} Hour ${h.toString().padStart(2, "0")}:00 | Supply: ${val.toFixed(1)} | Share: ${reqShare.toFixed(1)} | Gap: ${gap.toFixed(1)}`}
+                      >
+                        {gap > 0 ? `+${gap.toFixed(1)}` : gap < 0 ? gap.toFixed(1) : "0.0"}
+                      </td>
+                    );
+                  })}
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+      <div className="flex flex-wrap gap-x-4 gap-y-1 text-[10px] text-muted-foreground mt-3 pt-2 border-t border-border">
+        <span className="flex items-center gap-1">
+          <span className="inline-block w-3.5 h-3.5 bg-rose-950/90 border border-rose-800 rounded-sm" />
+          Severe Under (&lt; -1.5)
+        </span>
+        <span className="flex items-center gap-1">
+          <span className="inline-block w-3.5 h-3.5 bg-rose-900/50 border border-rose-900/60 rounded-sm" />
+          Mild Under (-1.5 to -0.5)
+        </span>
+        <span className="flex items-center gap-1">
+          <span className="inline-block w-3.5 h-3.5 bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-150 dark:border-emerald-900/40 rounded-sm" />
+          Optimal Coverage (0.0)
+        </span>
+        <span className="flex items-center gap-1">
+          <span className="inline-block w-3.5 h-3.5 bg-blue-900/50 border border-blue-900/60 rounded-sm" />
+          Mild Over (0.5 to 1.5)
+        </span>
+        <span className="flex items-center gap-1">
+          <span className="inline-block w-3.5 h-3.5 bg-blue-950/90 border border-blue-800 rounded-sm" />
+          Severe Over (&gt; 1.5)
+        </span>
+      </div>
+    </SectionCard>
   );
 }

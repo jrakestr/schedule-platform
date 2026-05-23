@@ -34,6 +34,7 @@ interface CoverageTabProps {
 export function CoverageTab({ snapshot, leadPct }: CoverageTabProps) {
   const [day, setDay] = useState<DOW>("Mon");
   const [viewMode, setViewMode] = useState<"proposed" | "legacy" | "compare">("proposed");
+  const [metricMode, setMetricMode] = useState<"share" | "raw">("share");
 
   const stats = useMemo(() => {
     const off = snapshot.volume.offered_per_interval.Combined[day];
@@ -59,7 +60,10 @@ export function CoverageTab({ snapshot, leadPct }: CoverageTabProps) {
         <SectionCard
           className="lg:col-span-2"
           title={`Where the calls are vs where the people are · ${day}`}
-          description="Both curves are normalized to 100% of the day. The view isolates the shape mismatch between demand and staffing — it does not quantify the headcount gap."
+          description={metricMode === "share"
+            ? "Both curves are normalized to 100% of the day. The view isolates the shape mismatch between demand and staffing — it does not quantify the headcount gap."
+            : "Actual calls per interval mapped against scheduled agent headcount on phones. This views exact volumes and active capacities rather than normalized shapes."
+          }
           toolbar={
             <div className="flex flex-col md:flex-row gap-2 items-start md:items-center">
               <div className="inline-flex gap-1 bg-muted p-1 rounded-md">
@@ -88,6 +92,26 @@ export function CoverageTab({ snapshot, leadPct }: CoverageTabProps) {
                   Compare Both
                 </Button>
               </div>
+
+              <div className="inline-flex gap-1 bg-muted p-1 rounded-md">
+                <Button
+                  variant={metricMode === "share" ? "default" : "ghost"}
+                  size="sm"
+                  className="h-7 text-xs rounded-sm"
+                  onClick={() => setMetricMode("share")}
+                >
+                  % Share
+                </Button>
+                <Button
+                  variant={metricMode === "raw" ? "default" : "ghost"}
+                  size="sm"
+                  className="h-7 text-xs rounded-sm"
+                  onClick={() => setMetricMode("raw")}
+                >
+                  Raw Counts
+                </Button>
+              </div>
+
               <DayTabs day={day} onChange={setDay} />
             </div>
           }
@@ -105,7 +129,7 @@ export function CoverageTab({ snapshot, leadPct }: CoverageTabProps) {
             />
             <StatTile
               label="Current/Legacy CSA hours"
-              value={f1(stats.legacyStaff)}
+              value={f1(stats.legacyStaff / 2)}
               hint="Effective current CSA agent-hours."
             />
             <StatTile
@@ -128,15 +152,16 @@ export function CoverageTab({ snapshot, leadPct }: CoverageTabProps) {
             legacySupplied={stats.legacySup}
             viewMode={viewMode}
             intervals={snapshot.meta.intervals}
+            metricMode={metricMode}
           />
 
           <div className="flex flex-wrap gap-4 text-xs text-muted-foreground mt-3">
-            <Legend swatch="#94a3b8" label="Call volume shape (% of day's calls)" />
+            <Legend swatch="#94a3b8" label={metricMode === "share" ? "Call volume shape (% of day's calls)" : "Call volume (actual calls)"} />
             {(viewMode === "proposed" || viewMode === "compare") && (
-              <Legend swatch="#4f46e5" label="Proposed Scheduled CSA shape (% of day's scheduled hours)" />
+              <Legend swatch="#4f46e5" label={metricMode === "share" ? "Proposed Scheduled CSA shape (% of day's scheduled hours)" : "Proposed Scheduled CSAs (headcount)"} />
             )}
             {(viewMode === "legacy" || viewMode === "compare") && (
-              <Legend swatch="#ea580c" label="Current/Legacy Scheduled CSA shape (% of day's scheduled hours)" />
+              <Legend swatch="#ea580c" label={metricMode === "share" ? "Current/Legacy Scheduled CSA shape (% of day's scheduled hours)" : "Current/Legacy Scheduled CSAs (headcount)"} />
             )}
           </div>
         </SectionCard>
@@ -150,8 +175,10 @@ export function CoverageTab({ snapshot, leadPct }: CoverageTabProps) {
                 roster is aimed at the hours where the calls are.
               </p>
               <p>
-                The grey area is the share of the day&apos;s calls in each 30-min
-                bucket. Toggle between <span className="font-semibold text-foreground">Proposed</span>, <span className="font-semibold text-foreground">Current/Legacy</span>, and <span className="font-semibold text-foreground">Compare Both</span> views in the toolbar above.
+                {metricMode === "share"
+                  ? "The grey area is the share of the day's calls in each 30-min bucket."
+                  : "The grey area is the actual number of calls offered in each 30-min bucket."
+                } Toggle between <span className="font-semibold text-foreground">Proposed</span>, <span className="font-semibold text-foreground">Current/Legacy</span>, and <span className="font-semibold text-foreground">Compare Both</span> views in the toolbar above.
               </p>
               <p className="text-xs">
                 The lead slider at the top weights CSA Leads at the configured
@@ -212,308 +239,6 @@ export function CoverageTab({ snapshot, leadPct }: CoverageTabProps) {
         </aside>
       </div>
 
-      {/* Operations RACI Delineation Card moved from Roster Tab */}
-      <SectionCard
-        title="Operations RACI & role delineation"
-        description="Delineation of responsibilities to protect specialized back-office scheduling and support teams from inbound call volume spikes."
-        bgImage="/28.jpg"
-        bgImageOpacity={0.03}
-      >
-        <div className="border rounded-md overflow-hidden bg-card">
-          <Table>
-            <TableHeader>
-              <TableRow className="bg-muted/50">
-                <TableHead className="font-semibold text-foreground">MJM Operational Task</TableHead>
-                <TableHead className="font-semibold text-foreground text-center">Inbound Agents (CSA)</TableHead>
-                <TableHead className="font-semibold text-foreground text-center">Same-Day (SDS)</TableHead>
-                <TableHead className="font-semibold text-foreground text-center">Next-Day (NDS)</TableHead>
-                <TableHead className="font-semibold text-foreground text-center">CSA Leads</TableHead>
-                <TableHead className="font-semibold text-foreground text-center">Supervisors</TableHead>
-                <TableHead className="font-semibold text-foreground text-center">General Manager / PM</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              <TableRow>
-                <TableCell className="font-medium">Inbound Call Taking & Reservations</TableCell>
-                <TableCell className="text-center">
-                  <Badge variant="success" className="bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-200">
-                    Responsible
-                  </Badge>
-                </TableCell>
-                <TableCell className="text-center text-xs text-muted-foreground">Not Involved</TableCell>
-                <TableCell className="text-center text-xs text-muted-foreground">Not Involved</TableCell>
-                <TableCell className="text-center">
-                  <Badge variant="success" className="bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-200">
-                    Accountable
-                  </Badge>
-                </TableCell>
-                <TableCell className="text-center">
-                  <Badge variant="success" className="bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-200">
-                    Consulted
-                  </Badge>
-                </TableCell>
-                <TableCell className="text-center text-xs text-muted-foreground">Informed</TableCell>
-              </TableRow>
-              
-              <TableRow>
-                <TableCell className="font-medium">First-Line Agent Inquiries & Questions</TableCell>
-                <TableCell className="text-center">
-                  <Badge variant="success" className="bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-200">
-                    Responsible (Raise)
-                  </Badge>
-                </TableCell>
-                <TableCell className="text-center text-xs text-muted-foreground">Not Involved</TableCell>
-                <TableCell className="text-center text-xs text-muted-foreground">Not Involved</TableCell>
-                <TableCell className="text-center">
-                  <Badge variant="success" className="bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-200">
-                    Responsible (Resolve)
-                  </Badge>
-                </TableCell>
-                <TableCell className="text-center">
-                  <Badge variant="success" className="bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-200">
-                    Accountable
-                  </Badge>
-                </TableCell>
-                <TableCell className="text-center text-xs text-muted-foreground">Informed</TableCell>
-              </TableRow>
-
-              <TableRow>
-                <TableCell className="font-medium">First-Line Agent Inquiries & ETAs</TableCell>
-                <TableCell className="text-center">
-                  <Badge variant="success" className="bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-200">
-                    Responsible (Raise)
-                  </Badge>
-                </TableCell>
-                <TableCell className="text-center">
-                  <Badge variant="success" className="bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-200">
-                    Consulted
-                  </Badge>
-                </TableCell>
-                <TableCell className="text-center text-xs text-muted-foreground">Not Involved</TableCell>
-                <TableCell className="text-center text-xs text-muted-foreground">Informed</TableCell>
-                <TableCell className="text-center">
-                  <Badge variant="success" className="bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-200">
-                    Accountable
-                  </Badge>
-                </TableCell>
-                <TableCell className="text-center text-xs text-muted-foreground">Informed</TableCell>
-              </TableRow>
-              
-              <TableRow>
-                <TableCell className="font-medium">Same-Day Trip Routing & Re-allocations</TableCell>
-                <TableCell className="text-center">
-                  <Badge variant="success" className="bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-200">
-                    Involved (ETA Calls)
-                  </Badge>
-                </TableCell>
-                <TableCell className="text-center">
-                  <Badge variant="success" className="bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-200">
-                    Resp + Acc
-                  </Badge>
-                </TableCell>
-                <TableCell className="text-center text-xs text-muted-foreground">Not Involved</TableCell>
-                <TableCell className="text-center text-xs text-muted-foreground">Consulted</TableCell>
-                <TableCell className="text-center text-xs text-muted-foreground">Informed</TableCell>
-                <TableCell className="text-center text-xs text-muted-foreground">Informed</TableCell>
-              </TableRow>
-              
-              <TableRow>
-                <TableCell className="font-medium">Next-Day Route Optimization & Prep</TableCell>
-                <TableCell className="text-center">
-                  <Badge variant="success" className="bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-200">
-                    Involved (Reservations)
-                  </Badge>
-                </TableCell>
-                <TableCell className="text-center text-xs text-muted-foreground">Informed</TableCell>
-                <TableCell className="text-center">
-                  <Badge variant="success" className="bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-200">
-                    Resp + Acc
-                  </Badge>
-                </TableCell>
-                <TableCell className="text-center text-xs text-muted-foreground">Not Involved</TableCell>
-                <TableCell className="text-center text-xs text-muted-foreground">Informed</TableCell>
-                <TableCell className="text-center text-xs text-muted-foreground">Informed</TableCell>
-              </TableRow>
-              
-              <TableRow>
-                <TableCell className="font-medium">Pending Reassignment Status Updates</TableCell>
-                <TableCell className="text-center">
-                  <Badge variant="success" className="bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-200">
-                    Responsible (Initial & Transfer)
-                  </Badge>
-                </TableCell>
-                <TableCell className="text-center">
-                  <Badge variant="success" className="bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-200">
-                    Responsible (Resolve)
-                  </Badge>
-                </TableCell>
-                <TableCell className="text-center text-xs text-muted-foreground">Not Involved</TableCell>
-                <TableCell className="text-center text-xs text-muted-foreground">Informed</TableCell>
-                <TableCell className="text-center">
-                  <Badge variant="success" className="bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-200">
-                    Accountable
-                  </Badge>
-                </TableCell>
-                <TableCell className="text-center text-xs text-muted-foreground">Informed</TableCell>
-              </TableRow>
-              
-              <TableRow>
-                <TableCell className="font-medium">Provider OTP Data Audits & Validation</TableCell>
-                <TableCell className="text-center text-xs text-muted-foreground">Not Involved</TableCell>
-                <TableCell className="text-center text-xs text-muted-foreground">Consulted</TableCell>
-                <TableCell className="text-center">
-                  <Badge variant="success" className="bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-200">
-                    Responsible (Validation)
-                  </Badge>
-                </TableCell>
-                <TableCell className="text-center text-xs text-muted-foreground">Not Involved</TableCell>
-                <TableCell className="text-center">
-                  <Badge variant="success" className="bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-200">
-                    Responsible (Incentives)
-                  </Badge>
-                </TableCell>
-                <TableCell className="text-center">
-                  <Badge variant="success" className="bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-200">
-                    Accountable (Revenue)
-                  </Badge>
-                </TableCell>
-              </TableRow>
-
-              <TableRow>
-                <TableCell className="font-medium">E-Wallet Customer Outreach</TableCell>
-                <TableCell className="text-center text-xs text-muted-foreground">Not Involved</TableCell>
-                <TableCell className="text-center text-xs text-muted-foreground">Consulted</TableCell>
-                <TableCell className="text-center text-xs text-muted-foreground">Not Involved</TableCell>
-                <TableCell className="text-center">
-                  <Badge variant="success" className="bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-200">
-                    Responsible
-                  </Badge>
-                </TableCell>
-                <TableCell className="text-center">
-                  <Badge variant="success" className="bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-200">
-                    Accountable
-                  </Badge>
-                </TableCell>
-                <TableCell className="text-center text-xs text-muted-foreground">Informed</TableCell>
-              </TableRow>
-
-              <TableRow>
-                <TableCell className="font-medium">PCI-DSS Credit Card Compliance (April 2026 Valley Metro Rule)</TableCell>
-                <TableCell className="text-center">
-                  <Badge variant="success" className="bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-200">
-                    Responsible (Compliance)
-                  </Badge>
-                </TableCell>
-                <TableCell className="text-center text-xs text-muted-foreground">Not Involved</TableCell>
-                <TableCell className="text-center text-xs text-muted-foreground">Not Involved</TableCell>
-                <TableCell className="text-center">
-                  <Badge variant="success" className="bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-200">
-                    Responsible (Resolve)
-                  </Badge>
-                </TableCell>
-                <TableCell className="text-center">
-                  <Badge variant="success" className="bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-200">
-                    Responsible (Audit)
-                  </Badge>
-                </TableCell>
-                <TableCell className="text-center">
-                  <Badge variant="success" className="bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-200">
-                    Accountable (Attest)
-                  </Badge>
-                </TableCell>
-              </TableRow>
-              
-              <TableRow>
-                <TableCell className="font-medium">Inbound Queue Surge Overflow Support</TableCell>
-                <TableCell className="text-center">
-                  <Badge variant="success" className="bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-200">
-                    Responsible
-                  </Badge>
-                </TableCell>
-                <TableCell className="text-center text-xs text-muted-foreground">Not Involved</TableCell>
-                <TableCell className="text-center text-xs text-muted-foreground">Not Involved</TableCell>
-                <TableCell className="text-center">
-                  <Badge variant="success" className="bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-200">
-                    Responsible
-                  </Badge>
-                </TableCell>
-                <TableCell className="text-center">
-                  <Badge variant="success" className="bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-200">
-                    Involved (Last Resort)
-                  </Badge>
-                </TableCell>
-                <TableCell className="text-center text-xs text-muted-foreground">Accountable</TableCell>
-              </TableRow>
-              
-              <TableRow>
-                <TableCell className="font-medium">Critical Incident Escalations (Injury/etc.)</TableCell>
-                <TableCell className="text-center">
-                  <Badge variant="success" className="bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-200">
-                    Responsible (Capture/Handoff)
-                  </Badge>
-                </TableCell>
-                <TableCell className="text-center">
-                  <Badge variant="success" className="bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-200">
-                    Responsible (Dispatch)
-                  </Badge>
-                </TableCell>
-                <TableCell className="text-center text-xs text-muted-foreground">Informed</TableCell>
-                <TableCell className="text-center text-xs text-muted-foreground">Consulted</TableCell>
-                <TableCell className="text-center">
-                  <Badge variant="success" className="bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-200">
-                    Responsible (Triage)
-                  </Badge>
-                </TableCell>
-                <TableCell className="text-center">
-                  <Badge variant="success" className="bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-200">
-                    Accountable (Final Report)
-                  </Badge>
-                </TableCell>
-              </TableRow>
-              
-              <TableRow>
-                <TableCell className="font-medium">Escalated Passenger Call Resolution</TableCell>
-                <TableCell className="text-center">
-                  <Badge variant="success" className="bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-200">
-                    Responsible (Initial & Transfer)
-                  </Badge>
-                </TableCell>
-                <TableCell className="text-center text-xs text-muted-foreground">Not Involved</TableCell>
-                <TableCell className="text-center text-xs text-muted-foreground">Not Involved</TableCell>
-                <TableCell className="text-center">
-                  <Badge variant="success" className="bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-200">
-                    Responsible
-                  </Badge>
-                </TableCell>
-                <TableCell className="text-center">
-                  <Badge variant="success" className="bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-200">
-                    Accountable
-                  </Badge>
-                </TableCell>
-                <TableCell className="text-center text-xs text-muted-foreground">Informed</TableCell>
-              </TableRow>
-              
-              <TableRow>
-                <TableCell className="font-medium">Overtime & Cleanup Shift Authorization</TableCell>
-                <TableCell className="text-center text-xs text-muted-foreground">Not Involved</TableCell>
-                <TableCell className="text-center text-xs text-muted-foreground">Not Involved</TableCell>
-                <TableCell className="text-center text-xs text-muted-foreground">Not Involved</TableCell>
-                <TableCell className="text-center text-xs text-muted-foreground">Not Involved</TableCell>
-                <TableCell className="text-center">
-                  <Badge variant="success" className="bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-200">
-                    Responsible
-                  </Badge>
-                </TableCell>
-                <TableCell className="text-center">
-                  <Badge variant="success" className="bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-200">
-                    Accountable
-                  </Badge>
-                </TableCell>
-              </TableRow>
-            </TableBody>
-          </Table>
-        </div>
-      </SectionCard>
     </div>
   );
 }

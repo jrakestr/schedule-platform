@@ -1,22 +1,30 @@
 import { Suspense } from "react";
-import { getLatestSnapshot, getSnapshotTakenAt } from "@/lib/data/snapshot";
+import { getLatestSnapshot, getSnapshotTakenAt, listOptimizations } from "@/lib/data/snapshot";
 import { PlatformShell } from "@/components/platform-shell";
 import { Skeleton } from "@/components/ui/skeleton";
 
-export default function Page() {
+interface PageProps {
+  searchParams: Promise<{ opt_id?: string }>;
+}
+
+export default function Page({ searchParams }: PageProps) {
   return (
     <Suspense fallback={<PageSkeleton />}>
-      <PlatformLoader />
+      <PlatformLoader searchParams={searchParams} />
     </Suspense>
   );
 }
 
-async function PlatformLoader() {
-  const [snapshot, takenAt] = await Promise.all([
-    getLatestSnapshot(),
-    getSnapshotTakenAt(),
+async function PlatformLoader({ searchParams }: { searchParams: Promise<{ opt_id?: string }> }) {
+  const resolvedParams = await searchParams;
+  const optId = resolvedParams.opt_id;
+
+  const [snapshot, takenAt, optimizations] = await Promise.all([
+    getLatestSnapshot(optId),
+    getSnapshotTakenAt(optId),
+    listOptimizations(),
   ]);
-  return <PlatformShell snapshot={snapshot} takenAt={takenAt} />;
+  return <PlatformShell snapshot={snapshot} takenAt={takenAt} optimizations={optimizations} />;
 }
 
 function PageSkeleton() {

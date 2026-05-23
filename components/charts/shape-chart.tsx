@@ -19,6 +19,7 @@ interface ShapeChartProps {
   legacySupplied?: number[];
   viewMode?: "proposed" | "legacy" | "compare";
   intervals: string[];
+  metricMode: "share" | "raw";
 }
 
 export function ShapeChart({
@@ -27,6 +28,7 @@ export function ShapeChart({
   legacySupplied,
   viewMode = "proposed",
   intervals,
+  metricMode,
 }: ShapeChartProps) {
   const offTotal = offered.reduce((s, v) => s + v, 0) || 1;
   const supTotal = supplied.reduce((s, v) => s + v, 0) || 1;
@@ -53,7 +55,7 @@ export function ShapeChart({
       <ResponsiveContainer width="100%" height="100%">
         <ComposedChart
           data={data}
-          margin={{ top: 12, right: 24, left: 0, bottom: 8 }}
+          margin={{ top: 12, right: 48, left: 24, bottom: 8 }}
         >
           <defs>
             <linearGradient id="vol-fill" x1="0" y1="0" x2="0" y2="1">
@@ -68,11 +70,30 @@ export function ShapeChart({
             tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }}
             interval={5}
           />
-          <YAxis
-            tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }}
-            tickFormatter={(v) => `${Number(v).toFixed(1)}%`}
-            width={56}
-          />
+          {metricMode === "share" ? (
+            <YAxis
+              yAxisId="left"
+              tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }}
+              tickFormatter={(v) => `${Number(v).toFixed(1)}%`}
+              width={56}
+            />
+          ) : (
+            <>
+              <YAxis
+                yAxisId="left"
+                tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }}
+                tickFormatter={(v) => String(Math.round(v))}
+                width={40}
+              />
+              <YAxis
+                yAxisId="right"
+                orientation="right"
+                tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }}
+                tickFormatter={(v) => String(Number(v).toFixed(1))}
+                width={40}
+              />
+            </>
+          )}
           <Tooltip
             contentStyle={{
               backgroundColor: "hsl(var(--popover))",
@@ -80,55 +101,66 @@ export function ShapeChart({
               borderRadius: 6,
               fontSize: 12,
             }}
-            formatter={(value: number, name: string) => {
-              if (name === "Call volume share")
+            formatter={(value: number, name: string, props: any) => {
+              const key = props?.dataKey;
+              if (metricMode === "share") {
+                if (key === "volume") return [`${value.toFixed(2)}%`, "Call volume share"];
+                if (key === "staff") return [`${value.toFixed(2)}%`, "Proposed Scheduled CSA share"];
+                if (key === "legacyStaff") return [`${value.toFixed(2)}%`, "Current/Legacy Scheduled CSA share"];
                 return [`${value.toFixed(2)}%`, name];
-              if (name === "Proposed Scheduled CSA share")
-                return [`${value.toFixed(2)}%`, name];
-              if (name === "Current/Legacy Scheduled CSA share")
-                return [`${value.toFixed(2)}%`, name];
-              return [value, name];
+              } else {
+                if (key === "rawVolume") return [`${Math.round(value)} calls`, "Call volume"];
+                if (key === "rawStaff") return [`${value.toFixed(1)} agents`, "Proposed Scheduled CSAs"];
+                if (key === "rawLegacyStaff") return [`${value.toFixed(1)} agents`, "Current/Legacy Scheduled CSAs"];
+                return [value, name];
+              }
             }}
             labelFormatter={(label) => `Interval ${label}`}
           />
-          <ReferenceLine
-            y={uniformShare}
-            stroke="hsl(var(--muted-foreground))"
-            strokeDasharray="4 4"
-            strokeOpacity={0.5}
-            label={{
-              value: "Uniform",
-              position: "right",
-              fill: "hsl(var(--muted-foreground))",
-              fontSize: 10,
-            }}
-          />
+          {metricMode === "share" && (
+            <ReferenceLine
+              y={uniformShare}
+              yAxisId="left"
+              stroke="hsl(var(--muted-foreground))"
+              strokeDasharray="4 4"
+              strokeOpacity={0.5}
+              label={{
+                value: "Uniform",
+                position: "insideBottomRight",
+                fill: "hsl(var(--muted-foreground))",
+                fontSize: 10,
+              }}
+            />
+          )}
           <Area
             type="monotone"
-            dataKey="volume"
-            name="Call volume share"
+            dataKey={metricMode === "share" ? "volume" : "rawVolume"}
+            name={metricMode === "share" ? "Call volume share" : "Call volume"}
             stroke="#475569"
             strokeWidth={2}
             fill="url(#vol-fill)"
+            yAxisId="left"
           />
           {(viewMode === "proposed" || viewMode === "compare") && (
             <Line
               type="monotone"
-              dataKey="staff"
-              name="Proposed Scheduled CSA share"
+              dataKey={metricMode === "share" ? "staff" : "rawStaff"}
+              name={metricMode === "share" ? "Proposed Scheduled CSA share" : "Proposed Scheduled CSAs"}
               stroke="#4f46e5"
               strokeWidth={2}
               dot={false}
+              yAxisId={metricMode === "raw" ? "right" : "left"}
             />
           )}
           {(viewMode === "legacy" || viewMode === "compare") && (
             <Line
               type="monotone"
-              dataKey="legacyStaff"
-              name="Current/Legacy Scheduled CSA share"
+              dataKey={metricMode === "share" ? "legacyStaff" : "rawLegacyStaff"}
+              name={metricMode === "share" ? "Current/Legacy Scheduled CSA share" : "Current/Legacy Scheduled CSAs"}
               stroke="#ea580c"
               strokeWidth={2}
               dot={false}
+              yAxisId={metricMode === "raw" ? "right" : "left"}
             />
           )}
           <Brush

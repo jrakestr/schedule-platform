@@ -258,7 +258,7 @@ export function ValidationTab({ snapshot, leadPct }: ValidationTabProps) {
               </SelectTrigger>
               <SelectContent>
                 {CSA_FUNCTIONS.map((f) => (
-                  <SelectItem key={f} value={f}>
+                  <SelectItem key={f} value={f || "default"}>
                     {f}
                   </SelectItem>
                 ))}
@@ -783,68 +783,6 @@ export function ValidationTab({ snapshot, leadPct }: ValidationTabProps) {
         </div>
       </div>
 
-      <SectionCard
-        title="Surge protection & compensation model"
-        description="Analytical modeling of weekend spillover, Monday absenteeism, and routing optimization within the strict 36-FTE headcount cap."
-        bgImage="/28.jpg"
-        bgImageOpacity={0.03}
-        className="mt-6"
-      >
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <div className="border rounded-lg p-5 bg-card space-y-3">
-            <h3 className="font-semibold text-sm text-foreground flex items-center gap-2">
-              <span className="inline-block w-2 h-2 rounded-full bg-indigo-500" />
-              Monday Absenteeism & Spillover Reserve
-            </h3>
-            <p className="text-xs text-muted-foreground leading-relaxed">
-              RideChoice operates as a true on-demand, immediate-dispatch service. Because passenger trips are booked for execution within 5–15 minutes, weekend trip backlogs and Monday absenteeism create an immediate risk of queue blowout. 
-            </p>
-            <p className="text-xs text-muted-foreground leading-relaxed border-t pt-2">
-              The analytical model compensates by dynamically shifting Monday shrinkage parameters from 30% up to 35% in interval calculations. This automatically scales up required scheduled capacity on Monday mornings to absorb the observed 5–10% increase in employee call-offs.
-            </p>
-          </div>
-
-          <div className="border rounded-lg p-5 bg-card space-y-3">
-            <h3 className="font-semibold text-sm text-foreground flex items-center gap-2">
-              <span className="inline-block w-2 h-2 rounded-full bg-emerald-500" />
-              Surge Pay & Creative Compensation
-            </h3>
-            <p className="text-xs text-muted-foreground leading-relaxed">
-              To guarantee coverage during high-volume periods without expanding headcount, a fluctuating surge pay compensation structure is modeled:
-            </p>
-            <div className="text-[11px] space-y-1.5 font-medium text-muted-foreground">
-              <div className="flex justify-between border-b pb-1">
-                <span>Mon Surge (04:30 – 08:30):</span>
-                <span className="font-mono text-foreground font-semibold">1.3x Base Pay</span>
-              </div>
-              <div className="flex justify-between border-b pb-1">
-                <span>Mon Peak (09:00 – 11:30):</span>
-                <span className="font-mono text-foreground">1.2x Base Pay</span>
-              </div>
-              <div className="flex justify-between">
-                <span>Fri Surge (14:30 – 17:30):</span>
-                <span className="font-mono text-foreground">1.2x Base Pay</span>
-              </div>
-            </div>
-            <p className="text-xs text-muted-foreground leading-relaxed border-t pt-2">
-              Agents completing these surge-window shifts accumulate Surge Points, which directly boost bidding seniority for the next quarterly schedule selection.
-            </p>
-          </div>
-
-          <div className="border rounded-lg p-5 bg-card space-y-3">
-            <h3 className="font-semibold text-sm text-foreground flex items-center gap-2">
-              <span className="inline-block w-2 h-2 rounded-full bg-amber-500" />
-              Dynamic Skill-Based Routing
-            </h3>
-            <p className="text-xs text-muted-foreground leading-relaxed">
-              Rigidly dividing the 36-FTE staff into isolated queue silos (RideChoice, ADA, ETA) severely damages operational efficiency. Roster modeling shows a siloing coverage penalty of 8.4 percentage points, dropping weighted weekly coverage from 55.5% to 47.1%.
-            </p>
-            <p className="text-xs text-muted-foreground leading-relaxed border-t pt-2">
-              The recommended path is a Primary/Secondary cross-skilling model. Automatic call distribution (ACD) overflows RideChoice queue pressure to cross-trained ADA-Primary agents when queue wait times exceed 15 seconds, capturing pooling efficiencies while protecting specialized service standards.
-            </p>
-          </div>
-        </div>
-      </SectionCard>
     </div>
   );
 }

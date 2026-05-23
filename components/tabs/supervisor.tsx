@@ -65,7 +65,7 @@ export function SupervisorTab({ snapshot }: SupervisorTabProps) {
         .filter((a): a is Agent => !!a);
       const supply = agentSupply(members, day, 1.0);
       podHourly[podName] = Array.from({ length: 24 }, (_, h) =>
-        Number((supply[h * 2] + supply[h * 2 + 1]).toFixed(2)),
+        Number(((supply[h * 2] + supply[h * 2 + 1]) / 2).toFixed(2)),
       );
     }
     const colTotals = Array.from({ length: 24 }, (_, h) =>

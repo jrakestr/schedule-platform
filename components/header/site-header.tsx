@@ -1,15 +1,19 @@
 "use client";
 
 import { useMemo } from "react";
+import { useQueryState } from "nuqs";
 import { Card } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
 import { LeadSlider } from "@/components/header/lead-slider";
 import { ThemeToggle } from "@/components/header/theme-toggle";
 import { CommandPalette } from "@/components/header/command-palette";
 import { AnimatedNumber } from "@/components/charts/animated-number";
 import { volumeMatchedShare } from "@/lib/compute/coverage";
 import { toneClass } from "@/lib/compute/colors";
+import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select";
 import type { Snapshot } from "@/lib/data/types";
 import type { TabId } from "@/components/tab-ids";
+import type { OptimizationMeta } from "@/lib/data/snapshot";
 
 interface SiteHeaderProps {
   snapshot: Snapshot;
@@ -17,6 +21,7 @@ interface SiteHeaderProps {
   leadPct: number;
   setLeadPct: (n: number) => void;
   onJump: (tab: TabId) => void;
+  optimizations: OptimizationMeta[];
 }
 
 export function SiteHeader({
@@ -25,7 +30,19 @@ export function SiteHeader({
   leadPct,
   setLeadPct,
   onJump,
+  optimizations,
 }: SiteHeaderProps) {
+  const [optId, setOptId] = useQueryState("opt_id", {
+    defaultValue: "",
+    clearOnDefault: true,
+  });
+
+  const [mode] = useQueryState("mode", {
+    defaultValue: "",
+    clearOnDefault: true,
+  });
+  const isViewer = mode === "viewer";
+
   const matched = useMemo(
     () => volumeMatchedShare(snapshot, leadPct),
     [snapshot, leadPct],
@@ -58,6 +75,27 @@ export function SiteHeader({
           </p>
         </div>
         <div className="flex items-center gap-6 flex-wrap">
+          <div className="flex flex-col gap-1 min-w-[180px]">
+            <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
+              Roster run
+            </span>
+            <Select value={optId || "default"} onValueChange={(val) => setOptId(val === "default" ? "" : val)}>
+              <SelectTrigger className="w-[180px] h-9 text-xs bg-background">
+                <SelectValue placeholder="Default Baseline" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="default" className="text-xs">
+                  Default Baseline
+                </SelectItem>
+                {optimizations.map((opt) => (
+                  <SelectItem key={opt.id} value={opt.id || "default"} className="text-xs">
+                    {opt.run_name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
           <KpiTile
             label="Volume-matched share"
             tone={toneClass(matched)}
@@ -86,8 +124,13 @@ export function SiteHeader({
           >
             <AnimatedNumber value={snapshot.meta.total_bodies} />
           </KpiTile>
-          <LeadSlider leadPct={leadPct} onChange={setLeadPct} />
-          <div className="flex items-center gap-1">
+          <LeadSlider leadPct={leadPct} onChange={setLeadPct} disabled={isViewer} />
+          <div className="flex items-center gap-2">
+            {isViewer && (
+              <Badge variant="outline" className="text-[10px] bg-emerald-50 dark:bg-emerald-950/20 text-emerald-700 dark:text-emerald-400 border-emerald-200 dark:border-emerald-900/40 h-7 font-semibold font-sans px-2.5">
+                Viewer Mode (Read-Only)
+              </Badge>
+            )}
             <CommandPalette snapshot={snapshot} onJump={onJump} />
             <ThemeToggle />
           </div>

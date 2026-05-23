@@ -6,9 +6,10 @@ import { Slider } from "@/components/ui/slider";
 interface LeadSliderProps {
   leadPct: number;
   onChange: (value: number) => void;
+  disabled?: boolean;
 }
 
-export function LeadSlider({ leadPct, onChange }: LeadSliderProps) {
+export function LeadSlider({ leadPct, onChange, disabled }: LeadSliderProps) {
   const [localValue, setLocalValue] = useState(Math.round(leadPct * 100));
 
   useEffect(() => {
@@ -28,6 +29,7 @@ export function LeadSlider({ leadPct, onChange }: LeadSliderProps) {
         value={[localValue]}
         onValueChange={(v) => setLocalValue(v[0])}
         onValueCommit={(v) => onChange(v[0] / 100)}
+        disabled={disabled}
       />
     </div>
   );

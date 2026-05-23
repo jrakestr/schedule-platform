@@ -9,3 +9,5 @@ out
 *.tsbuildinfo
 next-env.d.ts
 coverage
+local_optimizations.json
+

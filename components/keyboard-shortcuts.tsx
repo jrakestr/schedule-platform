@@ -28,7 +28,7 @@ const getModifierKey = (): string => {
   return /(Mac|iPhone|iPad|iPod)/i.test(navigator.platform) ? "⌘" : "Ctrl";
 };
 
-export function KeyboardShortcutsDialog({ onJump }: KeyboardShortcutsProps) {
+export function KeyboardShortcuts({ onJump }: KeyboardShortcutsProps) {
   const [helpOpen, setHelpOpen] = useState(false);
   const [modifierKey, setModifierKey] = useState("Ctrl");
 

@@ -264,7 +264,7 @@ export function CubiclesTab({ snapshot }: CubiclesTabProps) {
                   <SelectContent>
                     <SelectItem value="all">All Roles</SelectItem>
                     {roles.map((r) => (
-                      <SelectItem key={r} value={r}>
+                      <SelectItem key={r} value={r || "default"}>
                         {r}
                       </SelectItem>
                     ))}
@@ -280,7 +280,7 @@ export function CubiclesTab({ snapshot }: CubiclesTabProps) {
                   <SelectContent>
                     <SelectItem value="all">All Shifts</SelectItem>
                     {shiftClasses.map((sc) => (
-                      <SelectItem key={sc} value={sc}>
+                      <SelectItem key={sc} value={sc || "default"}>
                         {sc}
                       </SelectItem>
                     ))}

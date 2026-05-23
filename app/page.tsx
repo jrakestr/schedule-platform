@@ -29,8 +29,8 @@ async function PlatformLoader({ searchParams }: { searchParams: Promise<{ opt_id
 
 function PageSkeleton() {
   return (
-    <div className="min-h-screen bg-background">
-      <div className="border-b bg-card">
+    <div className="min-h-screen page-shell">
+      <div className="border-b surface-panel">
         <div className="mx-auto max-w-7xl px-6 py-4">
           <Skeleton className="h-6 w-72" />
           <Skeleton className="mt-2 h-4 w-96" />

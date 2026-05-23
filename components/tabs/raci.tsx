@@ -1,5 +1,6 @@
 "use client";
 
+import { OrgHierarchyChart } from "@/components/charts/org-hierarchy-chart";
 import { SectionCard } from "@/components/shared/section-card";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -10,25 +11,36 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import type { Snapshot } from "@/lib/data/types";
 
-export function RaciTab() {
+interface RaciTabProps {
+  snapshot: Snapshot;
+}
+
+export function RaciTab({ snapshot }: RaciTabProps) {
   return (
-    <SectionCard
-      title="Operations RACI & role delineation"
-      description="Delineation of responsibilities to protect specialized back-office scheduling and support teams from inbound call volume spikes."
-      bgImage="/28.jpg"
-      bgImageOpacity={0.03}
-    >
+    <div className="space-y-5">
+      <SectionCard
+        title="Operational hierarchy"
+        description="Supervisor → team → role mix across six pods."
+      >
+        <OrgHierarchyChart snapshot={snapshot} />
+      </SectionCard>
+
+      <SectionCard
+        title="Operations RACI"
+        description="Inbound voice vs scheduling ownership under surge conditions."
+      >
       <div className="border rounded-md overflow-hidden bg-card">
         <Table>
           <TableHeader>
             <TableRow className="bg-muted/50">
               <TableHead className="font-semibold text-foreground">MJM Operational Task</TableHead>
-              <TableHead className="font-semibold text-foreground text-center">Inbound Agents (CSA)</TableHead>
-              <TableHead className="font-semibold text-foreground text-center">Same-Day (SDS)</TableHead>
-              <TableHead className="font-semibold text-foreground text-center">Next-Day (NDS)</TableHead>
-              <TableHead className="font-semibold text-foreground text-center">CSA Leads</TableHead>
-              <TableHead className="font-semibold text-foreground text-center">Supervisors</TableHead>
+              <TableHead className="font-semibold text-foreground text-center">CSA</TableHead>
+              <TableHead className="font-semibold text-foreground text-center">SDS</TableHead>
+              <TableHead className="font-semibold text-foreground text-center">NDS</TableHead>
+              <TableHead className="font-semibold text-foreground text-center">CSA Lead</TableHead>
+              <TableHead className="font-semibold text-foreground text-center">Supervisor</TableHead>
               <TableHead className="font-semibold text-foreground text-center">General Manager / PM</TableHead>
             </TableRow>
           </TableHeader>
@@ -314,5 +326,6 @@ export function RaciTab() {
         </Table>
       </div>
     </SectionCard>
+    </div>
   );
 }

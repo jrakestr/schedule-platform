@@ -15,6 +15,7 @@ export const optimizerConstraintsSchema = z.object({
     eightHour: shiftConstraintSchema,
     tenHour: shiftConstraintSchema,
     twelveHour: shiftConstraintSchema,
+    splitShift: shiftConstraintSchema,
   }),
 }); // Removed .strict() for pipeline resiliency
 

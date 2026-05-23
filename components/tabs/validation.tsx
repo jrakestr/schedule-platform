@@ -35,7 +35,7 @@ import {
 } from "@/components/ui/table";
 import { csaSupply, getAgentsOnDuty } from "@/lib/compute/supply";
 import { getLegacyCsaSupply, getLegacyOnDutyStaff } from "@/lib/compute/legacy-supply";
-import { balanceTone } from "@/lib/compute/colors";
+import { balanceTone, roleBadgeClass } from "@/lib/compute/colors";
 import { f0, f1, pct } from "@/lib/utils";
 import {
   CSA_FUNCTIONS,
@@ -49,6 +49,14 @@ import { cn } from "@/lib/utils";
 interface ValidationTabProps {
   snapshot: Snapshot;
   leadPct: number;
+}
+
+function displayOperationalRole(role: string, position: string): string {
+  if (role === "Supervisor") return "Supervisor";
+  if (role === "CSA") return position === "Lead" ? "CSA Lead" : "CSA";
+  if (role === "SDS") return position === "Lead" ? "SDS Lead" : "SDS";
+  if (role === "NDS") return "NDS";
+  return role;
 }
 
 interface HourRow {
@@ -332,10 +340,8 @@ export function ValidationTab({ snapshot, leadPct }: ValidationTabProps) {
           title={`Hour-by-hour distribution · ${day} · ${fn}`}
           description={
             viewMode === "compare"
-              ? "Comparison of proposed vs current/legacy scheduled staff. Grey = call share, Indigo = proposed, Orange = current/legacy."
-              : viewMode === "legacy"
-                ? "Click any row to inspect current scheduled staff details on the right panel. Grey = call share, Orange = legacy staff share."
-                : "Click any row to inspect proposed scheduled staff details on the right panel. Grey = call share, Indigo = proposed staff share."
+              ? "Proposed vs current CSA staffing shape by hour."
+              : "Click a row to inspect team and role details for that hour."
           }
         >
           <div className="overflow-x-auto">
@@ -701,8 +707,8 @@ export function ValidationTab({ snapshot, leadPct }: ValidationTabProps) {
             }
             description={
               viewMode === "legacy"
-                ? `Legacy supervisors and CSRs on duty in this hour on ${day}.`
-                : `Proposed CSAs and Schedulers active in this hour on ${day}. Click ID to find on Roster.`
+                ? `Legacy CSA staffing on duty at ${selectedHour} · ${day}.`
+                : `Team members on duty at ${selectedHour} · ${day}; click ID for roster.`
             }
             toolbar={
               <Badge variant="success" className="font-mono">
@@ -737,12 +743,20 @@ export function ValidationTab({ snapshot, leadPct }: ValidationTabProps) {
                         </button>
                       )}
                       <div className="flex items-center gap-1.5">
-                        <Badge
-                          variant="secondary"
-                          className="text-[10px] uppercase font-semibold"
-                        >
-                          {info.agent.role} {info.agent.position}
-                        </Badge>
+                        {(() => {
+                          const label = displayOperationalRole(
+                            info.agent.role,
+                            info.agent.position,
+                          );
+                          return (
+                            <Badge
+                              variant="outline"
+                              className={`text-[10px] uppercase font-semibold ${roleBadgeClass(label)}`}
+                            >
+                              {label}
+                            </Badge>
+                          );
+                        })()}
                         <Badge
                           variant={isPartialHour ? "warning" : "success"}
                           className="font-mono text-[10px] font-semibold"
@@ -759,7 +773,8 @@ export function ValidationTab({ snapshot, leadPct }: ValidationTabProps) {
                           {podName}
                         </span>
                         <span>
-                          Report to: <strong className="font-semibold font-mono">{supervisorId}</strong>
+                          Supervisor:{" "}
+                          <strong className="font-semibold font-mono">{supervisorId}</strong>
                         </span>
                       </div>
                     )}

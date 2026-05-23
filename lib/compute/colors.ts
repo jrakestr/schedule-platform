@@ -1,9 +1,103 @@
+/** Desert-themed pod palette — shared across charts and pod cards. */
+export const POD_PALETTE = [
+  "#f97316",
+  "#d97706",
+  "#ca8a04",
+  "#dc2626",
+  "#7c3aed",
+  "#0891b2",
+  "#16a34a",
+  "#ea580c",
+] as const;
+
+export function podAccentColor(index: number): string {
+  return POD_PALETTE[index % POD_PALETTE.length];
+}
+
 // Shift colors and tonal helpers. The HTML platform had a known emerald-vs-indigo
 // legend/data mismatch on the Supervisor matrix; this Next.js port standardizes
 // on a single indigo gradient for all heatmaps (Supervisor + Cubicles) with an
 // explicit legend in the UI. cellTone is the canonical "share of peak" ramp.
 
 import type { Agent } from "@/lib/data/types";
+
+/** Canonical operational roles — single vocabulary across tabs, charts, and badges. */
+export const OPERATIONAL_ROLES = [
+  "Supervisor",
+  "CSA Lead",
+  "CSA",
+  "NDS",
+  "SDS Lead",
+  "SDS",
+] as const;
+
+export type OperationalRole = (typeof OPERATIONAL_ROLES)[number];
+
+/** Pod × Role matrix columns (Lead/Line split for CSA and SDS). */
+export const POD_ROLE_KEYS = [
+  "CSA Lead",
+  "CSA Line",
+  "NDS",
+  "SDS Lead",
+  "SDS Line",
+] as const;
+
+export type PodRoleKey = (typeof POD_ROLE_KEYS)[number];
+
+export const ROLE_COLOR: Record<string, string> = {
+  Supervisor: "#111827",
+  "CSA Lead": "#d97706",
+  CSA: "#16a34a",
+  "CSA Line": "#16a34a",
+  NDS: "#0284c7",
+  "SDS Lead": "#db2777",
+  SDS: "#7c3aed",
+  "SDS Line": "#7c3aed",
+};
+
+/** Tailwind classes for role badges (light + dark). */
+export const ROLE_BADGE_CLASS: Record<string, string> = {
+  Supervisor:
+    "bg-slate-500/10 text-slate-800 border-slate-200 dark:text-slate-200 dark:border-slate-700",
+  "CSA Lead":
+    "bg-amber-500/10 text-amber-700 border-amber-200 dark:text-amber-300 dark:border-amber-800",
+  CSA:
+    "bg-emerald-500/10 text-emerald-700 border-emerald-200 dark:text-emerald-300 dark:border-emerald-800",
+  "CSA Line":
+    "bg-emerald-500/10 text-emerald-700 border-emerald-200 dark:text-emerald-300 dark:border-emerald-800",
+  NDS:
+    "bg-sky-500/10 text-sky-700 border-sky-200 dark:text-sky-300 dark:border-sky-800",
+  "SDS Lead":
+    "bg-rose-500/10 text-rose-700 border-rose-200 dark:text-rose-300 dark:border-rose-800",
+  SDS:
+    "bg-violet-500/10 text-violet-700 border-violet-200 dark:text-violet-300 dark:border-violet-800",
+  "SDS Line":
+    "bg-violet-500/10 text-violet-700 border-violet-200 dark:text-violet-300 dark:border-violet-800",
+};
+
+export function roleColor(role: string): string {
+  return ROLE_COLOR[role] ?? "#64748b";
+}
+
+export function roleBadgeClass(role: string): string {
+  return ROLE_BADGE_CLASS[role] ?? ROLE_BADGE_CLASS.CSA;
+}
+
+/** Display label for roster badges: CSA Lead, CSA, NDS, SDS Lead, SDS, Supervisor. */
+export function agentOperationalRole(agent: Agent): OperationalRole | null {
+  if (agent.role === "Supervisor") return "Supervisor";
+  if (agent.role === "CSA") return agent.position === "Lead" ? "CSA Lead" : "CSA";
+  if (agent.role === "SDS") return agent.position === "Lead" ? "SDS Lead" : "SDS";
+  if (agent.role === "NDS") return "NDS";
+  return null;
+}
+
+export function agentPodRoleKey(agent: Agent): PodRoleKey | null {
+  if (agent.role === "CSA") return agent.position === "Lead" ? "CSA Lead" : "CSA Line";
+  if (agent.role === "SDS") return agent.position === "Lead" ? "SDS Lead" : "SDS Line";
+  if (agent.role === "NDS") return "NDS";
+  return null;
+}
 
 export const SHIFT_COLOR: Record<string, string> = {
   OVERNIGHT: "#475569",
@@ -13,6 +107,8 @@ export const SHIFT_COLOR: Record<string, string> = {
   PM_PEAK: "#c026d3",
   LATE: "#ea580c",
   TWILIGHT: "#dc2626",
+  SUPER12: "#e11d48",
+  SPLIT: "#0ea5e9",
   WKND_AM: "#16a34a",
   WKND_PM: "#65a30d",
   SUPERVISOR: "#111827",

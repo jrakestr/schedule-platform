@@ -3,27 +3,25 @@
 import { useMemo, useEffect, useState } from "react";
 import { useQueryState } from "nuqs";
 import { cn } from "@/lib/utils";
-import { Card } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { LeadSlider } from "@/components/header/lead-slider";
 import { ThemeToggle } from "@/components/header/theme-toggle";
 import { CommandPalette } from "@/components/header/command-palette";
 import { AnimatedNumber } from "@/components/charts/animated-number";
 import { volumeMatchedShare } from "@/lib/compute/coverage";
 import { toneClass } from "@/lib/compute/colors";
-import { 
-  Select, 
-  SelectTrigger, 
-  SelectValue, 
-  SelectContent, 
-  SelectItem 
+import {
+  Select,
+  SelectTrigger,
+  SelectValue,
+  SelectContent,
+  SelectItem,
 } from "@/components/ui/select";
 import {
   Tooltip,
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
-} from "@/components/ui/tooltip"; // Assumed path for accessible tooltips
+} from "@/components/ui/tooltip";
 
 import type { Snapshot } from "@/lib/data/types";
 import type { TabId } from "@/components/tab-ids";
@@ -62,10 +60,9 @@ export function SiteHeader({
     () => volumeMatchedShare(snapshot, leadPct),
     [snapshot, leadPct],
   );
-  
+
   const supOK = snapshot.supervisor_schedule.min_coverage >= 1;
 
-  // Fix hydration mismatch for locale-dependent date rendering
   const [refreshedLabel, setRefreshedLabel] = useState<string | null>(null);
 
   useEffect(() => {
@@ -81,38 +78,49 @@ export function SiteHeader({
     }
   }, [takenAt]);
 
-  // Avoid runtime crashes with empty/missing optimization IDs
   const validOptimizations = useMemo(() => {
     return optimizations.filter((opt) => opt.id);
   }, [optimizations]);
 
   return (
     <TooltipProvider>
-      <header className="bg-card border-b relative overflow-hidden">
-        <div 
-          className="absolute inset-0 bg-no-repeat bg-cover bg-center pointer-events-none select-none mix-blend-multiply dark:mix-blend-screen opacity-[0.05] dark:opacity-[0.02] bg-[url('/28.jpg')]"
+      <header className="border-b relative overflow-hidden surface-panel">
+        <div
+          className="absolute inset-0 dot-grid pointer-events-none select-none opacity-40 dark:opacity-25"
+          aria-hidden
         />
-        <div className="relative z-10 mx-auto max-w-7xl px-6 py-4 flex flex-wrap items-start gap-6 justify-between">
+        <div
+          className="absolute inset-0 pointer-events-none select-none"
+          style={{
+            background:
+              "linear-gradient(105deg, hsl(var(--surface-wash) / 0.9) 0%, transparent 50%, hsl(var(--primary) / 0.03) 100%)",
+          }}
+          aria-hidden
+        />
+        <div className="relative z-10 mx-auto max-w-7xl px-6 py-5 flex flex-wrap items-start gap-6 justify-between">
           <div className="flex-1 min-w-[280px]">
-            <h1 className="text-xl font-semibold tracking-tight">
+            <p className="text-[10px] uppercase tracking-[0.2em] text-primary/80 font-semibold mb-1">
+              Staffing review
+            </p>
+            <h1 className="text-xl font-semibold tracking-tight text-foreground">
               MJM ParaTransit · Schedule Review
             </h1>
-            <p className="text-xs text-muted-foreground mt-1 num">
+            <p className="text-xs text-muted-foreground mt-1.5 num font-mono leading-relaxed">
               Call volume · {snapshot.meta.source_rows.toLocaleString()} call
               records · forecast weeks {snapshot.meta.forecast_weeks.join(", ")}
               {refreshedLabel ? ` · refreshed ${refreshedLabel}` : null}
             </p>
           </div>
-          <div className="flex items-center gap-6 flex-wrap">
+          <div className="flex items-center gap-4 flex-wrap">
             <div className="flex flex-col gap-1 min-w-[180px]">
               <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
                 Roster run
               </span>
-              <Select 
-                value={optId || "default"} 
+              <Select
+                value={optId || "default"}
                 onValueChange={(val) => setOptId(val === "default" ? "" : val)}
               >
-                <SelectTrigger className="w-[180px] h-9 text-xs bg-background">
+                <SelectTrigger className="w-[180px] h-9 text-xs surface-inset">
                   <SelectValue placeholder="Default Baseline" />
                 </SelectTrigger>
                 <SelectContent>
@@ -138,7 +146,7 @@ export function SiteHeader({
                 format={(v) => `${(v * 100).toFixed(1)}%`}
               />
             </KpiTile>
-            
+
             <KpiTile
               label="Supervisor on duty"
               tone={
@@ -154,7 +162,7 @@ export function SiteHeader({
             <KpiTile
               label="Approved roster"
               tone="text-foreground"
-              tip="Fixed approved headcount across CSA + NDS + SDS + Supervisor."
+              tip="53 roster bodies: 36 CSA, 8 SDS, 3 NDS, 6 Supervisor."
             >
               <AnimatedNumber value={snapshot.meta.total_bodies} />
             </KpiTile>
@@ -162,9 +170,9 @@ export function SiteHeader({
             <LeadSlider leadPct={leadPct} onChange={setLeadPct} disabled={isViewer} />
             <div className="flex items-center gap-2">
               {isViewer && (
-                <Badge variant="outline" className="text-[10px] bg-emerald-50 dark:bg-emerald-950/20 text-emerald-700 dark:text-emerald-400 border-emerald-200 dark:border-emerald-900/40 h-7 font-semibold font-sans px-2.5">
+                <span className="inline-flex items-center rounded-md border border-emerald-200 dark:border-emerald-900/40 bg-emerald-50/80 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-400 text-[10px] font-semibold h-7 px-2.5">
                   Viewer Mode (Read-Only)
-                </Badge>
+                </span>
               )}
               <CommandPalette snapshot={snapshot} onJump={onJump} />
               <ThemeToggle />
@@ -188,14 +196,14 @@ function KpiTile({ label, children, tone, tip }: KpiTileProps) {
   return (
     <Tooltip>
       <TooltipTrigger asChild>
-        <Card className="px-3 py-2 shadow-none border-border/60 transition-colors hover:border-primary/40 cursor-help">
-          <div className="text-[10px] uppercase tracking-wider text-muted-foreground">
+        <div className="px-3.5 py-2.5 rounded-lg surface-inset transition-colors hover:outline-primary/20 cursor-help min-w-[7rem] kpi-stat">
+          <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium">
             {label}
           </div>
-          <div className={cn("text-lg font-semibold num", tone)}>
+          <div className={cn("text-lg font-semibold num leading-tight mt-0.5", tone)}>
             {children}
           </div>
-        </Card>
+        </div>
       </TooltipTrigger>
       <TooltipContent className="max-w-[240px] text-xs">
         {tip}
@@ -206,13 +214,12 @@ function KpiTile({ label, children, tone, tip }: KpiTileProps) {
 
 function FixedBanner() {
   return (
-    <div className="bg-amber-100/80 border-t border-amber-200 dark:bg-amber-950/30 dark:border-amber-900">
+    <div className="relative border-t border-amber-200/80 dark:border-amber-900/50 bg-gradient-to-r from-amber-100/90 via-amber-50/80 to-amber-100/90 dark:from-amber-950/40 dark:via-amber-950/25 dark:to-amber-950/40">
       <div className="mx-auto max-w-7xl px-6 py-2 flex items-center justify-between text-xs text-amber-950 dark:text-amber-200 font-medium">
         <div>
-          <span className="font-semibold text-amber-950 dark:text-amber-100">Fixed headcount.</span> 36 CSA (4
-          Leads) · 3 NDS · 8 SDS (2 Leads) · 6 Supervisors. This platform
-          shows how to distribute the existing roster. It does not request
-          additional headcount.
+          <span className="font-semibold text-amber-950 dark:text-amber-100">Fixed 53 roster.</span>{" "}
+          36 CSA (4 Lead) · 8 SDS (2 Lead) · 3 NDS · 6 Supervisor. Redistribution
+          only — no headcount requests.
         </div>
       </div>
     </div>

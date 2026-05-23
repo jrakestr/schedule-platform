@@ -42,7 +42,11 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { shiftColor } from "@/lib/compute/colors";
+import {
+  shiftColor,
+  agentOperationalRole,
+  roleBadgeClass,
+} from "@/lib/compute/colors";
 import { rosterRowsFor, type RosterRow } from "@/lib/compute/roster";
 import { cn } from "@/lib/utils";
 import type { Snapshot } from "@/lib/data/types";
@@ -79,6 +83,15 @@ function shiftCoversHour(
     (target >= s && target < e) ||
     (targetWrapped >= s && targetWrapped < e)
   );
+}
+
+function rosterOperationalRole(role: string, position: string): string | null {
+  if (!role) return null;
+  if (role === "Supervisor") return "Supervisor";
+  if (role === "CSA") return position === "Lead" ? "CSA Lead" : "CSA";
+  if (role === "SDS") return position === "Lead" ? "SDS Lead" : "SDS";
+  if (role === "NDS") return "NDS";
+  return role;
 }
 
 export function RosterTab({ snapshot }: RosterTabProps) {
@@ -143,20 +156,31 @@ export function RosterTab({ snapshot }: RosterTabProps) {
       {
         accessorKey: "role",
         header: "Role",
-        cell: ({ row }) => (
-          <span className="text-sm">{row.original.role}</span>
-        ),
+        cell: ({ row }) => {
+          const label = rosterOperationalRole(
+            row.original.role,
+            row.original.position,
+          );
+          if (!label) return null;
+          return (
+            <Badge variant="outline" className={roleBadgeClass(label)}>
+              {label}
+            </Badge>
+          );
+        },
       },
       {
         accessorKey: "position",
         header: "Position",
         cell: ({ row }) =>
-          row.original.position === "Lead" ? (
-            <Badge variant="warning">{row.original.position}</Badge>
+          row.original.position === "Line" ? (
+            <span className="text-sm text-muted-foreground">{row.original.position}</span>
           ) : row.original.position === "Supervisor" ? (
-            <Badge variant="secondary">{row.original.position}</Badge>
-          ) : row.original.position ? (
-            <span className="text-sm">{row.original.position}</span>
+            <Badge variant="outline" className={roleBadgeClass("Supervisor")}>
+              Supervisor
+            </Badge>
+          ) : row.original.position === "Lead" ? (
+            <span className="text-sm text-muted-foreground">Lead</span>
           ) : null,
       },
       {
@@ -225,7 +249,7 @@ export function RosterTab({ snapshot }: RosterTabProps) {
       },
       {
         accessorKey: "pod",
-        header: "Pod",
+        header: "Team",
         cell: ({ row }) => (
           <span className="text-sm">{row.original.pod}</span>
         ),

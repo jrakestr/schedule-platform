@@ -1,11 +1,26 @@
-import { NextResponse } from "next/server";
+import { NextResponse, after } from "next/server";
 import { createWriteClient } from "@/lib/supabase/server";
 import { exec } from "node:child_process";
+import { existsSync } from "node:fs";
 import { promisify } from "node:util";
 import path from "node:path";
 import { optimizerConstraintsSchema } from "@/lib/data/schemas";
 
 const execPromise = promisify(exec);
+
+function resolveWorkspaceRoot(): string {
+  const candidates = [
+    process.cwd(),
+    path.resolve(process.cwd(), ".."),
+    path.resolve(process.cwd(), "../.."),
+  ];
+  for (const root of candidates) {
+    if (existsSync(path.join(root, "scripts", "solve_orchestrator.py"))) {
+      return root;
+    }
+  }
+  return path.resolve(process.cwd(), "..");
+}
 
 export async function POST(request: Request) {
   try {
@@ -59,9 +74,13 @@ export async function POST(request: Request) {
     
     const id = runId;
     
-    // 3. Kick off solver in the background (fire-and-forget)
-    runOptimizationInBackground(id).catch((err) => {
-      console.error(`[Fatal] Background launcher failed for optimization run ${id}:`, err);
+    // 3. Keep the solver alive after the 202 response (Vercel/serverless safe).
+    after(async () => {
+      try {
+        await runOptimizationInBackground(id);
+      } catch (err) {
+        console.error(`[Fatal] Background launcher failed for optimization run ${id}:`, err);
+      }
     });
     
     // 4. Return 202 Accepted immediately
@@ -88,6 +107,32 @@ export async function POST(request: Request) {
   }
 }
 
+async function dispatchToExternalWorker(runId: string): Promise<void> {
+  const workerUrl = process.env.SOLVER_WORKER_URL;
+  if (!workerUrl) {
+    throw new Error("SOLVER_WORKER_URL is not configured.");
+  }
+
+  const workerSecret = process.env.SOLVER_WORKER_SECRET || "";
+  console.log(`[Background Task] Dispatching run ${runId} to external solver worker`);
+
+  const response = await fetch(workerUrl, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...(workerSecret ? { Authorization: `Bearer ${workerSecret}` } : {}),
+    },
+    body: JSON.stringify({ runId }),
+  });
+
+  if (!response.ok) {
+    const details = await response.text().catch(() => "");
+    throw new Error(
+      `External solver worker returned ${response.status}${details ? `: ${details}` : ""}`,
+    );
+  }
+}
+
 async function runOptimizationInBackground(id: string) {
   const supabase = createWriteClient();
   
@@ -99,7 +144,19 @@ async function runOptimizationInBackground(id: string) {
     });
     
   try {
-    const workspaceRoot = path.resolve(process.cwd(), "..");
+    if (process.env.SOLVER_WORKER_URL) {
+      await dispatchToExternalWorker(id);
+      return;
+    }
+
+    const workspaceRoot = resolveWorkspaceRoot();
+    const orchestratorPath = path.join(workspaceRoot, "scripts", "solve_orchestrator.py");
+    if (!existsSync(orchestratorPath)) {
+      throw new Error(
+        `Solver orchestrator not found at ${orchestratorPath}. ` +
+          "Deploy scripts/output with the app or set SOLVER_WORKER_URL.",
+      );
+    }
     
     // Environment configurations
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "https://zxmtztietmjfmjyszngb.supabase.co";
@@ -127,7 +184,7 @@ async function runOptimizationInBackground(id: string) {
       console.log(`[Background Task] Running in Docker container for run ${id}`);
       command = `docker run --rm -v /tmp:/tmp -e SUPABASE_URL="${supabaseUrl}" -e SUPABASE_SERVICE_ROLE_KEY="${serviceRoleKey}" -e NEXT_PUBLIC_SITE_URL="${siteUrl}" -e REVALIDATE_SECRET="${revalidateSecret}" schedule-optimizer-container --run-id ${id}`;
     } else {
-      console.log(`[Background Task] Running natively via python3 for run ${id}`);
+      console.log(`[Background Task] Running natively via python3 for run ${id} (cwd=${workspaceRoot})`);
       command = `python3 scripts/solve_orchestrator.py --run-id ${id}`;
     }
 

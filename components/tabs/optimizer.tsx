@@ -57,7 +57,7 @@ export function OptimizerStatusBanner({ state, errorCode, errorMessage, onRetry 
             <RefreshCw className="h-5 w-5 text-primary shrink-0 animate-spin mt-0.5" />
           )}
           <div>
-            <h4 className="font-semibold capitalize text-sm">Solver Status: {state}</h4>
+            <h4 className="font-semibold capitalize text-sm">Run status: {state}</h4>
             {errorMessage && (
               <p className="text-xs mt-1 leading-relaxed opacity-90">
                 <strong>Details:</strong> {errorMessage} {errorCode && `(${errorCode})`}
@@ -92,7 +92,7 @@ interface ShiftConstraint {
   percentage: number;
 }
 
-type ShiftKey = "sixHour" | "eightHour" | "tenHour" | "twelveHour";
+type ShiftKey = "sixHour" | "eightHour" | "tenHour" | "twelveHour" | "splitShift";
 
 interface ShiftCardProps {
   title: string;
@@ -261,10 +261,16 @@ export function OptimizerTab({ snapshot, onUpdateSnapshot, optimizations }: Opti
       percentage: 20,
     },
     twelveHour: {
-      enabled: false,
+      enabled: true,
       mode: "count",
-      maxCount: 0,
-      percentage: 0,
+      maxCount: 8,
+      percentage: 15,
+    },
+    splitShift: {
+      enabled: true,
+      mode: "count",
+      maxCount: 8,
+      percentage: 20,
     },
   });
 
@@ -408,6 +414,10 @@ export function OptimizerTab({ snapshot, onUpdateSnapshot, optimizations }: Opti
     handleShiftChange("twelveHour", updated);
   }, [handleShiftChange]);
 
+  const handleSplitShiftChange = useCallback((updated: ShiftConstraint) => {
+    handleShiftChange("splitShift", updated);
+  }, [handleShiftChange]);
+
   const [runState, setRunState] = useState<RunState>("idle");
   const [errorCode, setErrorCode] = useState<string | undefined>(undefined);
   const isPollingRef = useRef(false);
@@ -429,7 +439,7 @@ export function OptimizerTab({ snapshot, onUpdateSnapshot, optimizations }: Opti
     setIsSolving(true);
     setErrorDetails(null);
     setErrorCode(undefined);
-    setSolvingStatus("Initiating optimization solver run...");
+    setSolvingStatus("Starting optimization run...");
 
     const payload = {
       name: runName.trim(),
@@ -452,6 +462,10 @@ export function OptimizerTab({ snapshot, onUpdateSnapshot, optimizations }: Opti
           enabled: shifts.twelveHour.enabled,
           maxCount: getAbsoluteCount(shifts.twelveHour, TOTAL_HEADCOUNT),
         },
+        splitShift: {
+          enabled: shifts.splitShift.enabled,
+          maxCount: getAbsoluteCount(shifts.splitShift, TOTAL_HEADCOUNT),
+        },
       },
     };
 
@@ -459,7 +473,7 @@ export function OptimizerTab({ snapshot, onUpdateSnapshot, optimizations }: Opti
       const result = await launchOptimization(payload);
       const runId = result.id;
       setRunState("polling");
-      setSolvingStatus("Solver launched in background. Polling for results...");
+      setSolvingStatus("Optimization is running. Checking for results...");
 
       // Start exponential backoff status polling
       let pollAttempts = 0;
@@ -482,7 +496,7 @@ export function OptimizerTab({ snapshot, onUpdateSnapshot, optimizations }: Opti
           const run = statusResult.run;
           if (run.status === "succeeded") {
             setRunState("succeeded");
-            setSolvingStatus("Success! Redirecting to overlay roster...");
+            setSolvingStatus("Complete. Loading roster overlay...");
             setRunName("");
             setNotes("");
             // Set opt_id in URL to switch roster view
@@ -493,7 +507,7 @@ export function OptimizerTab({ snapshot, onUpdateSnapshot, optimizations }: Opti
           } else if (run.status === "failed") {
             setRunState("failed");
             setErrorCode("SOLVER_FAIL");
-            setErrorDetails(run.error_details || "Optimization CP-SAT solver failed.");
+            setErrorDetails(run.error_details || "Optimization failed.");
             setIsSolving(false);
           } else {
             // Keep polling with exponential backoff delay (3s -> 10s cap)
@@ -508,15 +522,15 @@ export function OptimizerTab({ snapshot, onUpdateSnapshot, optimizations }: Opti
 
             const backoffMs = Math.min(3000 + pollAttempts * 1000, 10000);
             setSolvingStatus(run.status === "running"
-              ? `Roster layout solver is running (attempt ${pollAttempts}/${maxPollAttempts})...`
-              : `Waiting in solver queue (attempt ${pollAttempts}/${maxPollAttempts})...`
+              ? `Building roster (check ${pollAttempts}/${maxPollAttempts})...`
+              : `Queued (check ${pollAttempts}/${maxPollAttempts})...`
             );
             setTimeout(executePoll, backoffMs);
           }
         } catch (err: any) {
           setRunState("failed");
           setErrorCode("POLL_FAIL");
-          setErrorDetails(err.message || "Failed to parse solver response.");
+          setErrorDetails(err.message || "Failed to read optimization status.");
           setIsSolving(false);
         }
       };
@@ -570,12 +584,10 @@ export function OptimizerTab({ snapshot, onUpdateSnapshot, optimizations }: Opti
 
       <SectionCard
         title="Simple Optimizer Configurator"
-        description="Toggle available shift lengths and specify headcount capacities. Run Google's CP-SAT engine dynamically to instantly re-solve and align weekly roster schedules."
-        bgImage="/28.jpg"
-        bgImageOpacity={0.03}
+        description="Turn shift types on or off and set how many agents can take each length. Run optimization to rebuild the weekly roster."
         toolbar={
           <Badge variant="secondary" className="font-mono text-xs">
-            Headcount Constraint: {TOTAL_HEADCOUNT} Cubicles
+            Roster pool: {TOTAL_HEADCOUNT} agents (CSA + SDS + NDS)
           </Badge>
         }
       >
@@ -594,10 +606,10 @@ export function OptimizerTab({ snapshot, onUpdateSnapshot, optimizations }: Opti
             Allowed Shift Configurations
           </h2>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
             <ShiftCard
               title="6-Hour Shifts"
-              description="Twilight and short mid-day shifts (gross 6h). Concentrates coverage during evening call tails."
+              description="Short twilight and mid-day shifts for late-day coverage."
               state={shifts.sixHour}
               onChange={handleSixHourChange}
               colorClass="bg-indigo-500"
@@ -607,7 +619,7 @@ export function OptimizerTab({ snapshot, onUpdateSnapshot, optimizations }: Opti
 
             <ShiftCard
               title="8-Hour Shifts"
-              description="Standard full-time shifts (gross 8h-8.5h). EARLY, AM_CORE, LATE, and OVERNIGHT blocks."
+              description="Standard full-time weekday shifts — early, mid, late, and overnight."
               state={shifts.eightHour}
               onChange={handleEightHourChange}
               colorClass="bg-emerald-500"
@@ -617,7 +629,7 @@ export function OptimizerTab({ snapshot, onUpdateSnapshot, optimizations }: Opti
 
             <ShiftCard
               title="10-Hour Shifts"
-              description="Compressed workweeks and weekend shifts (gross 10.5h). Covers larger service spans."
+              description="Longer weekend and compressed shifts."
               state={shifts.tenHour}
               onChange={handleTenHourChange}
               colorClass="bg-amber-500"
@@ -627,10 +639,20 @@ export function OptimizerTab({ snapshot, onUpdateSnapshot, optimizations }: Opti
 
             <ShiftCard
               title="12-Hour Shifts"
-              description="Toll-free emergency or super-span schedules."
+              description="Super-span on-clock blocks (about 12 hours) for toll-free and emergency coverage."
               state={shifts.twelveHour}
               onChange={handleTwelveHourChange}
               colorClass="bg-rose-500"
+              totalHeadcount={TOTAL_HEADCOUNT}
+              disabled={isSolving || isViewer}
+            />
+
+            <ShiftCard
+              title="Split Shifts"
+              description="Two phone blocks in one day — morning and afternoon — with unpaid time off in between."
+              state={shifts.splitShift}
+              onChange={handleSplitShiftChange}
+              colorClass="bg-sky-500"
               totalHeadcount={TOTAL_HEADCOUNT}
               disabled={isSolving || isViewer}
             />
@@ -638,10 +660,10 @@ export function OptimizerTab({ snapshot, onUpdateSnapshot, optimizations }: Opti
         </div>
 
         <aside className="space-y-5">
-          <SectionCard title="Optimization Sandbox" bgImage="/28.jpg" bgImageOpacity={0.06}>
+          <SectionCard title="Optimization Sandbox">
             <div className="space-y-4 text-sm text-muted-foreground leading-relaxed">
               <p>
-                Adjust the limits and toggle switches to configure biddable shift options. Define a name, run notes, and click Run below to solve the CP-SAT model.
+                Set limits for each shift type, enter a run name, add optional notes, and click Run to rebuild the weekly roster.
               </p>
 
               <div className="space-y-3">
@@ -678,12 +700,12 @@ export function OptimizerTab({ snapshot, onUpdateSnapshot, optimizations }: Opti
                 </div>
                 <div className="space-y-1">
                   <label htmlFor="run-notes" className="text-xs font-semibold text-foreground">
-                    Notes / Hypothesis
+                    Notes
                   </label>
                   <textarea
                     id="run-notes"
                     rows={2}
-                    placeholder="Explain the intent of this run..."
+                    placeholder="Optional context for this run..."
                     value={notes}
                     onChange={(e) => setNotes(e.target.value)}
                     disabled={isSolving || isViewer}
@@ -700,7 +722,7 @@ export function OptimizerTab({ snapshot, onUpdateSnapshot, optimizations }: Opti
               )}
 
               <div className="bg-amber-100/60 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-900/60 rounded-md p-3 text-xs text-amber-950 dark:text-amber-200 font-medium">
-                <span className="font-semibold text-amber-950 dark:text-amber-100">Stateless Solving:</span> Operates entirely in safe isolated memory.
+                Each run starts fresh. Results are saved only after a run completes successfully.
               </div>
 
               <div className="border-t border-border my-4" />
@@ -713,7 +735,7 @@ export function OptimizerTab({ snapshot, onUpdateSnapshot, optimizations }: Opti
                     <span>No Feasible Schedule Found</span>
                   </div>
                   <p className="text-[11px] text-red-800 dark:text-red-300 leading-relaxed">
-                    The solver cannot satisfy constraints due to a physical contradiction:
+                    The current limits cannot produce a valid schedule:
                   </p>
                   
                   {infeasibilityDetails.blockedIntervals.length > 0 && (
@@ -762,7 +784,7 @@ export function OptimizerTab({ snapshot, onUpdateSnapshot, optimizations }: Opti
                         }}
                         className="text-[10px] h-7 w-full bg-red-600 hover:bg-red-700 text-white"
                       >
-                        Enable 8-Hour shifts with full capacity (Relax by 10%)
+                        Enable 8-hour shifts at full roster capacity
                       </Button>
                     </div>
                   )}
@@ -780,7 +802,7 @@ export function OptimizerTab({ snapshot, onUpdateSnapshot, optimizations }: Opti
                 {isSolving ? (
                   <>
                     <RefreshCw className="h-4 w-4 animate-spin" />
-                    Solving CP-SAT Model...
+                    Running optimization...
                   </>
                 ) : isViewer ? (
                   <>
@@ -803,7 +825,7 @@ export function OptimizerTab({ snapshot, onUpdateSnapshot, optimizations }: Opti
                     <span>Stakeholder Feedback</span>
                   </div>
                   <p className="text-[11px] text-muted-foreground leading-relaxed">
-                    Collaborative Mode is active. Share your thoughts or suggestions below.
+                    Viewer mode is active. Comments can be submitted below.
                   </p>
                   <div className="space-y-2 text-xs">
                     <div className="space-y-1">
@@ -1031,6 +1053,15 @@ export function OptimizerTab({ snapshot, onUpdateSnapshot, optimizations }: Opti
                         </div>
                         <div className="flex justify-between items-center border-b pb-1.5 border-border">
                           <span className="text-muted-foreground flex items-center gap-1">
+                            <Users2 className="h-3.5 w-3.5 text-rose-500" />
+                            12-Hour Shift Count
+                          </span>
+                          <span className="num font-bold text-foreground">
+                            {metrics.twelveHourCount} agents
+                          </span>
+                        </div>
+                        <div className="flex justify-between items-center border-b pb-1.5 border-border">
+                          <span className="text-muted-foreground flex items-center gap-1">
                             <Users2 className="h-3.5 w-3.5 text-violet-500" />
                             Split-Shift Count
                           </span>
@@ -1068,6 +1099,7 @@ function calculateScenarioMetrics(snapshotPayload: Snapshot | null | undefined) 
   if (!snapshotPayload) return null;
   
   let totalCost = 0;
+  let twelveHourCount = 0;
   let splitShiftCount = 0;
   let peakCubicles = 0;
 
@@ -1088,7 +1120,11 @@ function calculateScenarioMetrics(snapshotPayload: Snapshot | null | undefined) 
 
     // Check split incentive eligibility
     const v = agent.shift_id || "";
-    const isSplit = v.startsWith("WKND_") || v.startsWith("OVERNIGHT_") || v.startsWith("TWILIGHT_") || v.includes("SPLIT");
+    const isTwelveHour = v.startsWith("SUPER12") || v.includes("SUPER12");
+    const isSplit = v.startsWith("SPLIT") || v.includes("SPLIT");
+    if (isTwelveHour) {
+      twelveHourCount++;
+    }
     if (isSplit) {
       splitShiftCount++;
       agentWeeklyCost += 100; // $20/day * 5 days = $100 weekly bonus
@@ -1195,6 +1231,7 @@ function calculateScenarioMetrics(snapshotPayload: Snapshot | null | undefined) 
   return {
     totalCost,
     volumeMatchedShare: matchedShare,
+    twelveHourCount,
     splitShiftCount,
     peakCubicles,
   };

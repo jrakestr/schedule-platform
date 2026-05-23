@@ -1,8 +1,8 @@
 // 1. Define the labels first. This acts as your single source of truth.
 export const TAB_LABELS = {
+  raci: "RACI Matrix",
   coverage: "Coverage",
   validation: "Validation",
-  raci: "RACI Matrix",
   supervisor: "Supervisor",
   pods: "Pods",
   shifts: "Shifts",
@@ -15,9 +15,18 @@ export const TAB_LABELS = {
 // This guarantees that any key added to TAB_LABELS is automatically a valid TabId.
 export type TabId = keyof typeof TAB_LABELS;
 
-// 3. Derive the TAB_IDS array from the keys if you need it elsewhere (e.g., for rendering order).
-// We cast it to ensure the array elements are treated as TabId literals rather than generic strings.
-export const TAB_IDS = Object.keys(TAB_LABELS) as readonly TabId[];
+// 3. Explicit tab order — RACI leads the narrative (roles → coverage).
+export const TAB_IDS = [
+  "raci",
+  "coverage",
+  "validation",
+  "supervisor",
+  "pods",
+  "shifts",
+  "cubicles",
+  "roster",
+  "optimizer",
+] as const satisfies readonly TabId[];
 
 /**
  * Type guard to check if a value is a valid TabId.

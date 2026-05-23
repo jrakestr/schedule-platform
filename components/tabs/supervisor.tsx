@@ -17,6 +17,8 @@ import {
 import { agentSupply } from "@/lib/compute/supply";
 import {
   SHIFT_COLOR,
+  POD_ROLE_KEYS,
+  agentPodRoleKey,
   cellTone,
   shiftColor,
 } from "@/lib/compute/colors";
@@ -36,19 +38,10 @@ interface SupervisorTabProps {
   leadPct: number;
 }
 
-const ROLE_KEYS = [
-  "CSA Lead",
-  "CSA Line",
-  "NDS",
-  "SDS Lead",
-  "SDS Line",
-] as const;
+const ROLE_KEYS = POD_ROLE_KEYS;
 
-function roleKey(a: Agent): (typeof ROLE_KEYS)[number] | null {
-  if (a.role === "CSA") return a.position === "Lead" ? "CSA Lead" : "CSA Line";
-  if (a.role === "SDS") return a.position === "Lead" ? "SDS Lead" : "SDS Line";
-  if (a.role === "NDS") return "NDS";
-  return null;
+function roleKey(a: Agent) {
+  return agentPodRoleKey(a);
 }
 
 export function SupervisorTab({ snapshot }: SupervisorTabProps) {
@@ -166,13 +159,13 @@ export function SupervisorTab({ snapshot }: SupervisorTabProps) {
   return (
     <div className="space-y-5">
       <SectionCard
-        title="Cross-pod coverage matrix"
-        description="Each row is a pod owned by one supervisor. Cells show how many people from that pod overlap on the floor by hour, by shift type, and by role."
+        title="Cross-team coverage matrix"
+        description="Each row is one supervisor's team; cells show hourly overlap, shift mix, and role mix."
         toolbar={
           <div className="flex items-center gap-2 flex-wrap">
             <Badge variant="secondary">
-              6 Supervisors · {podNames.length} Pods · {snapshot.agents.length}{" "}
-              people
+              6 Supervisor · {podNames.length} teams · {snapshot.agents.length}{" "}
+              roster
             </Badge>
             <DayTabs day={day} onChange={setDay} />
           </div>
@@ -182,7 +175,7 @@ export function SupervisorTab({ snapshot }: SupervisorTabProps) {
           <div>
             <div className="flex items-baseline justify-between mb-2">
               <h3 className="font-semibold text-sm">
-                Pod coverage timeline · {day}
+                Team coverage timeline · {day}
               </h3>
               <span className="text-xs text-muted-foreground">
                 Each ribbon is one person on shift. Color = shift template.
@@ -210,17 +203,16 @@ export function SupervisorTab({ snapshot }: SupervisorTabProps) {
 
           <div>
             <h3 className="font-semibold text-sm mb-2">
-              Pod × Hour coverage
+              Team × Hour coverage
             </h3>
             <p className="text-xs text-muted-foreground mb-2">
-              People from each pod scheduled on phones per hour. The bottom row
-              shows total scheduled vs required headcount.
+              Scheduled headcount per team by hour; bottom row totals vs call volume.
             </p>
             <div className="overflow-x-auto">
               <table className="text-xs border-separate border-spacing-0 min-w-full">
                 <thead>
                   <tr>
-                    <th className="text-left p-2 sticky left-0 bg-card">Pod</th>
+                    <th className="text-left p-2 sticky left-0 bg-card">Team</th>
                     {snapshot.meta.hours.map((h) => (
                       <th
                         key={h}
@@ -282,16 +274,16 @@ export function SupervisorTab({ snapshot }: SupervisorTabProps) {
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             <div>
               <h3 className="font-semibold text-sm mb-2">
-                Pod × Shift type overlap
+                Team × Shift overlap
               </h3>
               <p className="text-xs text-muted-foreground mb-2">
-                How many agents in each pod use each shift template.
+                Shift template count per team.
               </p>
               <div className="overflow-x-auto">
                 <table className="text-xs border-separate border-spacing-0 min-w-full">
                   <thead>
                     <tr>
-                      <th className="text-left p-2 sticky left-0 bg-card">Pod</th>
+                      <th className="text-left p-2 sticky left-0 bg-card">Team</th>
                       {matrices.shiftIds.map((s) => (
                         <th
                           key={s}
@@ -340,16 +332,15 @@ export function SupervisorTab({ snapshot }: SupervisorTabProps) {
             </div>
 
             <div>
-              <h3 className="font-semibold text-sm mb-2">Pod × Role overlap</h3>
+              <h3 className="font-semibold text-sm mb-2">Team × Role mix</h3>
               <p className="text-xs text-muted-foreground mb-2">
-                Role mix inside each pod. CSAs handle phones; NDS/SDS handle
-                scheduling; Leads coach.
+                CSA, CSA Lead, NDS, SDS, and SDS Lead counts per team.
               </p>
               <div className="overflow-x-auto">
                 <table className="text-xs border-separate border-spacing-0 min-w-full">
                   <thead>
                     <tr>
-                      <th className="text-left p-2 sticky left-0 bg-card">Pod</th>
+                      <th className="text-left p-2 sticky left-0 bg-card">Team</th>
                       {ROLE_KEYS.map((r) => (
                         <th
                           key={r}
@@ -416,7 +407,7 @@ export function SupervisorTab({ snapshot }: SupervisorTabProps) {
 
       <SectionCard
         title="Supervisor coverage"
-        description="Hard constraint: at least one named supervisor on duty every hour of every day. KPIs below come straight from solve_supervisor_schedule.py."
+        description="At least one supervisor on duty every hour; KPIs from the supervisor schedule solver."
       >
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           <StatTile
@@ -447,8 +438,8 @@ export function SupervisorTab({ snapshot }: SupervisorTabProps) {
       <OvernightProof snapshot={snapshot} />
 
       <SectionCard
-        title="Supervisor → employee tree"
-        description="Each supervisor owns one pod. Pod members shown with their static shift window."
+        title="Supervisor → team roster"
+        description="Each supervisor's team with shift windows and role labels."
       >
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {Object.entries(directReports).map(([supId, podsForSup]) => (
@@ -604,7 +595,7 @@ function CoverageProof24x7({
   return (
     <SectionCard
       title="24/7 agent + supervisor coverage proof"
-      description="At least one CSA scheduled every hour, paired with the on-duty supervisor. Computed live from each agent's working days and shift structure."
+      description="At least one CSA and one supervisor every hour, computed from shift structure."
       toolbar={
         <Badge
           variant={allOk ? "success" : csaGapCells > 0 ? "destructive" : "warning"}
@@ -722,7 +713,7 @@ function OvernightProof({ snapshot }: { snapshot: Snapshot }) {
   return (
     <SectionCard
       title="Overnight coverage proof · 00:00–06:00"
-      description="Every overnight hour must have at least one named supervisor on duty. Generated directly from the supervisor schedule."
+      description="Every overnight hour has at least one named supervisor on duty."
       toolbar={
         <Badge variant={allCovered ? "success" : "destructive"}>
           {allCovered ? "All overnight hours covered" : "Coverage gap detected"}

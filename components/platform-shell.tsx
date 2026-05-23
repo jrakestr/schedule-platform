@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { LayoutGroup, motion } from "framer-motion";
 import { useQueryState, parseAsFloat, parseAsStringEnum } from "nuqs";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { KeyboardShortcuts } from "@/components/keyboard-shortcuts";
@@ -26,10 +27,8 @@ interface PlatformShellProps {
 }
 
 export function PlatformShell({ snapshot, takenAt, optimizations }: PlatformShellProps) {
-  // Local state to support mutations inside the OptimizerTab
   const [activeSnapshot, setActiveSnapshot] = useState<Snapshot>(snapshot);
 
-  // Synchronize local state with server-side snapshot changes
   useEffect(() => {
     setActiveSnapshot(snapshot);
   }, [snapshot]);
@@ -40,12 +39,11 @@ export function PlatformShell({ snapshot, takenAt, optimizations }: PlatformShel
   );
 
   const [rawLeadPct, setLeadPct] = useQueryState("lead", parseAsFloat);
-  
-  // Safeguard: Fallback to active snapshot meta default if lead query is empty
+
   const leadPct = rawLeadPct ?? activeSnapshot.meta.lead_on_work_default;
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen page-shell">
       <KeyboardShortcuts onJump={setTab} />
       <SiteHeader
         snapshot={activeSnapshot}
@@ -57,32 +55,41 @@ export function PlatformShell({ snapshot, takenAt, optimizations }: PlatformShel
       />
 
       <Tabs value={tab} onValueChange={(v) => setTab(v as TabId)}>
-        {/* Changed from <nav> to <div> for ARIA landmark compliance */}
-        <div className="sticky top-0 z-10 bg-card border-b">
+        <div className="sticky top-0 z-10 tab-rail">
           <div className="mx-auto max-w-7xl px-6">
-            <TabsList className="bg-transparent gap-1 h-auto p-0">
-              {TAB_IDS.map((id) => (
-                <TabsTrigger
-                  key={id}
-                  value={id}
-                  className={cn(
-                    "rounded-none border-b-2 border-transparent py-3",
-                    "data-[state=active]:border-primary data-[state=active]:text-primary",
-                    "data-[state=active]:bg-transparent data-[state=active]:shadow-none"
-                  )}
-                >
-                  {TAB_LABELS[id]}
-                </TabsTrigger>
-              ))}
+            <TabsList className="bg-transparent gap-0.5 h-auto p-0 w-full justify-start overflow-x-auto">
+              <LayoutGroup>
+                {TAB_IDS.map((id) => (
+                  <TabsTrigger
+                    key={id}
+                    value={id}
+                    className={cn(
+                      "relative rounded-none border-b-2 border-transparent py-3 px-4 text-sm font-medium",
+                      "text-muted-foreground hover:text-foreground transition-colors",
+                      "data-[state=active]:border-transparent data-[state=active]:bg-transparent",
+                      "data-[state=active]:shadow-none data-[state=active]:text-primary",
+                    )}
+                  >
+                    {TAB_LABELS[id]}
+                    {tab === id && (
+                      <motion.span
+                        layoutId="platform-tab-indicator"
+                        className="absolute left-3 right-3 bottom-0 h-0.5 rounded-full bg-primary"
+                        transition={{ type: "spring", stiffness: 400, damping: 30 }}
+                      />
+                    )}
+                  </TabsTrigger>
+                ))}
+              </LayoutGroup>
             </TabsList>
           </div>
         </div>
 
-        {/* Conditional rendering of tab panels reduces layout/rendering overhead */}
         <main className="mx-auto max-w-7xl px-6 py-6">
+          <div className="rounded-2xl surface-inset p-6 min-h-[60vh]">
           {tab === "coverage" && <CoverageTab snapshot={activeSnapshot} leadPct={leadPct} />}
           {tab === "validation" && <ValidationTab snapshot={activeSnapshot} leadPct={leadPct} />}
-          {tab === "raci" && <RaciTab />}
+          {tab === "raci" && <RaciTab snapshot={activeSnapshot} />}
           {tab === "supervisor" && <SupervisorTab snapshot={activeSnapshot} leadPct={leadPct} />}
           {tab === "pods" && <PodsTab snapshot={activeSnapshot} />}
           {tab === "shifts" && <ShiftsTab snapshot={activeSnapshot} />}
@@ -91,13 +98,16 @@ export function PlatformShell({ snapshot, takenAt, optimizations }: PlatformShel
           {tab === "optimizer" && (
             <OptimizerTab snapshot={activeSnapshot} onUpdateSnapshot={setActiveSnapshot} optimizations={optimizations} />
           )}
+          </div>
         </main>
       </Tabs>
 
-      <footer className="border-t bg-card mt-12">
+      <footer className="border-t surface-panel mt-12">
         <div className="mx-auto max-w-7xl px-6 py-4 text-xs text-muted-foreground flex items-center justify-between">
-          <span>MJM ParaTransit · Schedule Review · 24/7 staffing</span>
-          <span className="num">
+          <span>
+            MJM ParaTransit · 53 roster · 6 Supervisor · 6 teams · 24/7 staffing
+          </span>
+          <span className="num font-mono text-[11px]">
             source: {activeSnapshot.meta.source}
           </span>
         </div>

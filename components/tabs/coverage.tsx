@@ -167,7 +167,7 @@ export function CoverageTab({ snapshot, leadPct }: CoverageTabProps) {
         </SectionCard>
 
         <aside className="space-y-5">
-          <SectionCard title="How to read this" bgImage="/28.jpg" bgImageOpacity={0.06}>
+          <SectionCard title="How to read this">
             <div className="space-y-3 text-sm text-muted-foreground leading-relaxed">
               <p>
                 Headcount is fixed. This chart asks a different question than &ldquo;is

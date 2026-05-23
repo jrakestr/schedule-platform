@@ -41,14 +41,20 @@ export function ShiftsTab({ snapshot }: ShiftsTabProps) {
 
   const assignedByShift = useMemo<Record<string, AssignedAgent[]>>(() => {
     const out: Record<string, AssignedAgent[]> = {};
+    const catalogKeys = new Set(snapshot.shift_catalog.map((s) => s.shift_id));
     for (const s of snapshot.shift_catalog) out[s.shift_id] = [];
     for (const agent of snapshot.agents) {
-      const baseId = agent.shift_class;
-      if (!out[baseId]) continue;
+      const catalogKey =
+        catalogKeys.has(agent.shift_id)
+          ? agent.shift_id
+          : catalogKeys.has(agent.shift_class)
+            ? agent.shift_class
+            : null;
+      if (!catalogKey || !out[catalogKey]) continue;
       const podEntry = Object.entries(snapshot.pods).find(([, p]) =>
         p.members.includes(agent.id),
       );
-      out[baseId].push({
+      out[catalogKey].push({
         ...agent,
         pod: podEntry ? podEntry[0] : "—",
         supervisor_id: podEntry ? podEntry[1].supervisor_id : "—",
@@ -77,8 +83,6 @@ export function ShiftsTab({ snapshot }: ShiftsTabProps) {
       <SectionCard
         title="Shift catalog"
         description="Click any shift template to see the people currently assigned to it."
-        bgImage="/28.jpg"
-        bgImageOpacity={0.06}
       >
         <div className="bg-amber-100/60 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-900/60 rounded-md p-3 text-xs text-amber-950 dark:text-amber-200 mb-4 font-medium">
           <span className="font-semibold text-amber-950 dark:text-amber-100">Reading the count.</span>{" "}
@@ -155,8 +159,6 @@ export function ShiftsTab({ snapshot }: ShiftsTabProps) {
       <SectionCard
         title="Alternative scheduling strategy"
         description="Compressed workweeks and split shifts designed to combat peak intervals under the 36-FTE headcount cap."
-        bgImage="/28.jpg"
-        bgImageOpacity={0.03}
       >
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div className="border rounded-lg p-5 bg-card space-y-4">

@@ -12,24 +12,6 @@ export default function Page() {
 }
 
 async function PlatformLoader() {
-  // #region agent log
-  if (typeof fetch !== "undefined") {
-    fetch('http://127.0.0.1:7652/ingest/f98b42a6-0ecb-4542-93cc-9816df326eaf',{
-      method:'POST',
-      headers:{'Content-Type':'application/json','X-Debug-Session-Id':'8cb33e'},
-      body:JSON.stringify({
-        sessionId:'8cb33e',
-        runId: 'init',
-        hypothesisId:'2',
-        location:'page.tsx:15',
-        message:'loading platform snapshot',
-        data:{},
-        timestamp: 1779659000000
-      })
-    }).catch(()=>{});
-  }
-  // #endregion
-
   const [snapshot, takenAt] = await Promise.all([
     getLatestSnapshot(),
     getSnapshotTakenAt(),

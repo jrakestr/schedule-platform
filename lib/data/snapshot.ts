@@ -32,7 +32,7 @@ async function readFromSupabase(): Promise<SnapshotRecord | null> {
   if (!url || !hasKey) return null;
 
   const supabase = createReadClient();
-  const { data, error } = await supabase.rpc("get_latest_platform_snapshot");
+  const { data, error } = await supabase.rpc("get_baseline_platform_snapshot");
 
   if (error) {
     throw new Error(`Failed to load platform snapshot: ${error.message}`);
@@ -118,19 +118,11 @@ async function loadSnapshotRecord(optId?: string): Promise<SnapshotRecord> {
 }
 
 export async function getLatestSnapshot(optId?: string): Promise<Snapshot> {
-  "use cache";
-  cacheTag(SNAPSHOT_TAG);
-  cacheLife("hours");
-
   const record = await loadSnapshotRecord(optId);
   return record.payload;
 }
 
 export async function getSnapshotTakenAt(optId?: string): Promise<string | null> {
-  "use cache";
-  cacheTag(SNAPSHOT_TAG);
-  cacheLife("hours");
-
   try {
     const record = await loadSnapshotRecord(optId);
     return record.taken_at;

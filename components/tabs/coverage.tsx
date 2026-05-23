@@ -65,7 +65,7 @@ export function CoverageTab({ snapshot, leadPct }: CoverageTabProps) {
             : "Actual calls per interval mapped against scheduled agent headcount on phones. This views exact volumes and active capacities rather than normalized shapes."
           }
           toolbar={
-            <div className="flex flex-col md:flex-row gap-2 items-start md:items-center">
+            <div className="flex flex-wrap gap-2 items-center">
               <div className="inline-flex gap-1 bg-muted p-1 rounded-md">
                 <Button
                   variant={viewMode === "proposed" ? "default" : "ghost"}

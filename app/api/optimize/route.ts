@@ -36,10 +36,6 @@ export async function POST(request: Request) {
     // 1. Establish Supabase write client
     const supabase = createWriteClient();
     
-    // #region agent log
-    fetch('http://127.0.0.1:7652/ingest/f98b42a6-0ecb-4542-93cc-9816df326eaf',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'126045'},body:JSON.stringify({sessionId:'126045',hypothesisId:'A',location:'app/api/optimize/route.ts:39',message:'Attempting to insert optimizations record',data:{name,notes,cubicleCap},timestamp:Date.now()})}).catch(()=>{});
-    // #endregion
-
     // 2. Insert optimization run with 'pending' status
     const { data: runId, error: insertError } = await supabase
       .rpc("insert_optimization", {
@@ -49,9 +45,6 @@ export async function POST(request: Request) {
       });
       
     if (insertError || !runId) {
-      // #region agent log
-      fetch('http://127.0.0.1:7652/ingest/f98b42a6-0ecb-4542-93cc-9816df326eaf',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'126045'},body:JSON.stringify({sessionId:'126045',hypothesisId:'A',location:'app/api/optimize/route.ts:54',message:'Optimizations record insertion failed',data:{error:insertError?.message || 'No record',code:insertError?.code},timestamp:Date.now()})}).catch(()=>{});
-      // #endregion
       console.error("Database insert failed:", insertError);
       return NextResponse.json(
         {

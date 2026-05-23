@@ -232,6 +232,7 @@ export function OptimizerTab({ snapshot, onUpdateSnapshot, optimizations }: Opti
   const [optId, setOptId] = useQueryState("opt_id", {
     defaultValue: "",
     clearOnDefault: true,
+    shallow: false,
   });
   const [mode] = useQueryState("mode", {
     defaultValue: "",

@@ -17,17 +17,10 @@ export async function DELETE(request: Request) {
 
     const supabase = createWriteClient();
 
-    // #region agent log
-    fetch('http://127.0.0.1:7652/ingest/f98b42a6-0ecb-4542-93cc-9816df326eaf',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'126045'},body:JSON.stringify({sessionId:'126045',hypothesisId:'D',location:'app/api/optimize/delete/route.ts:20',message:'Attempting to delete optimization record',data:{id},timestamp:Date.now()})}).catch(()=>{});
-    // #endregion
-
     const { error } = await supabase
       .rpc("delete_optimization", { target_id: id });
 
     if (error) {
-      // #region agent log
-      fetch('http://127.0.0.1:7652/ingest/f98b42a6-0ecb-4542-93cc-9816df326eaf',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'126045'},body:JSON.stringify({sessionId:'126045',hypothesisId:'D',location:'app/api/optimize/delete/route.ts:31',message:'Optimization record deletion failed',data:{error:error.message},timestamp:Date.now()})}).catch(()=>{});
-      // #endregion
       return NextResponse.json(
         { ok: false, error: "Failed to delete optimization run", details: error.message },
         { status: 500 }

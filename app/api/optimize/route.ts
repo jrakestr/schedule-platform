@@ -1,5 +1,9 @@
 import { NextResponse, after, connection } from "next/server";
-import { createWriteClient } from "@/lib/supabase/server";
+import {
+  createWriteClient,
+  getAuthedUser,
+  unauthorizedResponse,
+} from "@/lib/supabase/server";
 import { execFile } from "node:child_process";
 import { existsSync } from "node:fs";
 import { writeFile } from "node:fs/promises";
@@ -66,12 +70,12 @@ function debugLog(
   data: Record<string, unknown>,
   hypothesisId: string,
 ) {
-  // #region agent log
-  fetch("http://127.0.0.1:7652/ingest/f98b42a6-0ecb-4542-93cc-9816df326eaf", {
+  const ingestUrl = process.env.DEBUG_INGEST_URL;
+  if (!ingestUrl) return;
+  fetch(ingestUrl, {
     method: "POST",
-    headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "126045" },
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
-      sessionId: "126045",
       location,
       message,
       data,
@@ -79,7 +83,6 @@ function debugLog(
       timestamp: Date.now(),
     }),
   }).catch(() => {});
-  // #endregion
 }
 
 function logEvent(event: string, fields: Record<string, unknown>) {
@@ -316,6 +319,9 @@ async function runOptimizationInBackground(runId: string, constraints: RunConstr
 export async function POST(request: Request) {
   await connection();
 
+  const user = await getAuthedUser();
+  if (!user) return unauthorizedResponse();
+
   try {
     const body = await request.json().catch(() => null);
 
@@ -351,7 +357,7 @@ export async function POST(request: Request) {
 
     const { data: insertedRunId, error: insertError } = await supabase.rpc("insert_optimization", {
       run_name: name,
-      notes: notes ?? "",
+      notes: notes ?? null,
       constraints: {
         shifts,
         cubicleCap: cubicleCap ?? DEFAULT_CUBICLE_CAP,

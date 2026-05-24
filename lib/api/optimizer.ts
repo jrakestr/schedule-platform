@@ -37,12 +37,12 @@ function formatValidationErrors(error: ZodError): string {
 }
 
 function debugPreflightLog(message: string, data: Record<string, unknown>, hypothesisId: string) {
-  // #region agent log
-  fetch("http://127.0.0.1:7652/ingest/f98b42a6-0ecb-4542-93cc-9816df326eaf", {
+  const ingestUrl = process.env.NEXT_PUBLIC_DEBUG_INGEST_URL;
+  if (!ingestUrl) return;
+  fetch(ingestUrl, {
     method: "POST",
-    headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "126045" },
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
-      sessionId: "126045",
       location: "optimizer.ts:launchOptimization",
       message,
       data,
@@ -50,7 +50,6 @@ function debugPreflightLog(message: string, data: Record<string, unknown>, hypot
       timestamp: Date.now(),
     }),
   }).catch(() => {});
-  // #endregion
 }
 
 export async function launchOptimization(
@@ -116,13 +115,6 @@ export async function launchOptimization(
     return (await response.json()) as LaunchResponse;
   } catch (error: any) {
     clearTimeout(timeoutId);
-    
-    console.group("❌ Optimizer Launch Failure");
-    console.error("Reason:", error.message);
-    if (error instanceof OptimizerLaunchError) {
-      console.error("Details:", error.details);
-    }
-    console.groupEnd();
 
     if (error instanceof OptimizerLaunchError) throw error;
     if (error.name === "AbortError") {

@@ -26,11 +26,36 @@ export interface AgentAssignmentChange {
 }
 
 export interface ShiftCountChange {
-  shiftId: string;
+  shiftType: string;
   label: string;
   baselineCount: number;
   proposedCount: number;
   delta: number;
+}
+
+// Strip the trailing `_NNNN` time suffix so `EARLY_0300` -> `EARLY`, `SUPER12_0530` -> `SUPER12`.
+function shiftTypeFromId(shiftId: string): string {
+  return shiftId.replace(/_\d{4}$/, "") || "UNASSIGNED";
+}
+
+const SHIFT_TYPE_LABELS: Record<string, string> = {
+  OVERNIGHT: "Overnight",
+  EARLY: "Early",
+  AM_CORE: "AM-Core",
+  MID: "Mid",
+  PM_PEAK: "PM-Peak",
+  LATE: "Late",
+  TWILIGHT: "Twilight",
+  SPLIT: "Split Double-Peak",
+  SUPER12: "Super-Span 12h",
+  WKND_AM: "Weekend AM",
+  WKND_PM: "Weekend PM",
+  UNASSIGNED: "Unassigned",
+};
+
+function shiftTypeLabel(type: string, catalog: ShiftCatalogEntry[]): string {
+  const entry = catalog.find((s) => s.shift_id === type);
+  return entry?.label ?? SHIFT_TYPE_LABELS[type] ?? type;
 }
 
 export interface OptimizationComparison {
@@ -70,11 +95,11 @@ function agentWeeklyHours(agent: Agent): number {
   );
 }
 
-function shiftCounts(agents: Agent[]): Map<string, number> {
+function shiftCountsByType(agents: Agent[]): Map<string, number> {
   const counts = new Map<string, number>();
   for (const agent of agents) {
-    const id = agent.shift_id || "UNASSIGNED";
-    counts.set(id, (counts.get(id) ?? 0) + 1);
+    const type = shiftTypeFromId(agent.shift_id || "");
+    counts.set(type, (counts.get(type) ?? 0) + 1);
   }
   return counts;
 }
@@ -128,7 +153,7 @@ export function computeScenarioMetrics(
   return {
     totalCost,
     totalHours,
-    weightedCoveragePct: coverageRatio(snapshot, leadPct) * 100,
+    weightedCoveragePct: (coverageRatio(snapshot, leadPct) ?? 0) * 100,
     totalBodies: snapshot.meta?.total_bodies ?? agents.length,
     twelveHourCount,
     splitShiftCount,
@@ -178,21 +203,20 @@ export function diffShiftCounts(
   proposedAgents: Agent[],
   catalog: ShiftCatalogEntry[],
 ): ShiftCountChange[] {
-  const baselineCounts = shiftCounts(baselineAgents);
-  const proposedCounts = shiftCounts(proposedAgents);
-  const allShiftIds = new Set([...baselineCounts.keys(), ...proposedCounts.keys()]);
+  const baselineCounts = shiftCountsByType(baselineAgents);
+  const proposedCounts = shiftCountsByType(proposedAgents);
+  const allTypes = new Set([...baselineCounts.keys(), ...proposedCounts.keys()]);
 
   const rows: ShiftCountChange[] = [];
-  for (const shiftId of allShiftIds) {
-    const baselineCount = baselineCounts.get(shiftId) ?? 0;
-    const proposedCount = proposedCounts.get(shiftId) ?? 0;
+  for (const type of allTypes) {
+    const baselineCount = baselineCounts.get(type) ?? 0;
+    const proposedCount = proposedCounts.get(type) ?? 0;
     const delta = proposedCount - baselineCount;
     if (delta === 0) continue;
 
-    const entry = catalog.find((s) => s.shift_id === shiftId);
     rows.push({
-      shiftId,
-      label: entry?.label ?? shiftId,
+      shiftType: type,
+      label: shiftTypeLabel(type, catalog),
       baselineCount,
       proposedCount,
       delta,

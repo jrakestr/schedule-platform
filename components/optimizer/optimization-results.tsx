@@ -139,14 +139,14 @@ export function OptimizationResults({
 
       {comparison.shiftCountChanges.length > 0 && (
         <SectionCard
-          title="Shift Template Changes"
-          description="Shift counts that changed between baseline and proposed roster."
+          title="Shift Type Changes"
+          description="Counts grouped by shift type between baseline and proposed roster."
         >
           <div className="rounded-md border overflow-hidden">
             <Table>
               <TableHeader>
                 <TableRow className="bg-muted/40 hover:bg-muted/40">
-                  <TableHead className="text-xs">Shift</TableHead>
+                  <TableHead className="text-xs">Shift Type</TableHead>
                   <TableHead className="text-xs text-right">Baseline</TableHead>
                   <TableHead className="text-xs text-right">Proposed</TableHead>
                   <TableHead className="text-xs text-right w-20">Δ</TableHead>
@@ -154,11 +154,8 @@ export function OptimizationResults({
               </TableHeader>
               <TableBody>
                 {comparison.shiftCountChanges.map((row) => (
-                  <TableRow key={row.shiftId}>
-                    <TableCell className="text-xs font-medium">
-                      <div>{row.label}</div>
-                      <div className="text-[10px] text-muted-foreground font-mono">{row.shiftId}</div>
-                    </TableCell>
+                  <TableRow key={row.shiftType}>
+                    <TableCell className="text-xs font-medium">{row.label}</TableCell>
                     <TableCell className="text-xs text-right">{row.baselineCount}</TableCell>
                     <TableCell className="text-xs text-right">{row.proposedCount}</TableCell>
                     <TableCell className="text-xs text-right">

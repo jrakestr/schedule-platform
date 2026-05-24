@@ -57,3 +57,16 @@ export function agentInitials(agent: Agent): string {
   }
   return label.slice(0, 2).toUpperCase();
 }
+
+/**
+ * Bucketed shift-length label: "6-hour shift", "8-hour shift", "Split shift", etc.
+ * Floors gross_hours so 8.5h (8h + lunch) reads as "8-hour shift".
+ */
+export function shiftLengthLabel(agent: Agent): string | null {
+  const shiftId = agent.shift_id || "";
+  if (shiftId.includes("SPLIT")) return "Split shift";
+  if (shiftId.includes("SUPER12")) return "12-hour shift";
+  const hours = agent.gross_hours;
+  if (typeof hours !== "number" || !isFinite(hours) || hours <= 0) return null;
+  return `${Math.floor(hours)}-hour shift`;
+}

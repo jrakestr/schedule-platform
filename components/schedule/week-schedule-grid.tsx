@@ -5,6 +5,7 @@ import { useQueryState, parseAsString } from "nuqs";
 import {
   agentDisplayName,
   agentInitials,
+  shiftLengthLabel,
 } from "@/lib/compute/agent-context";
 import {
   agentOperationalRole,
@@ -169,9 +170,11 @@ function AgentRow({
             <div className="truncate text-[11px] font-medium">
               {agentDisplayName(agent)}
             </div>
-            <div className="truncate font-mono text-[9px] text-muted-foreground">
-              {agent.id}
-            </div>
+            {shiftLengthLabel(agent) && (
+              <div className="truncate text-[9px] text-muted-foreground">
+                {shiftLengthLabel(agent)}
+              </div>
+            )}
             {hours && (
               <div className="num text-[9px] tabular-nums text-muted-foreground">
                 {hours}h

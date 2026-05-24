@@ -1,8 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useQueryState } from "nuqs";
-import { agentIdParam, teamParam, teamRoleParam } from "@/lib/navigation/panel-params";
+import { useQueryState, parseAsString } from "nuqs";
 import { Search, User, Briefcase, Building2, Shield, Clock } from "lucide-react";
 import {
   CommandDialog,
@@ -14,7 +13,7 @@ import {
 } from "@/components/ui/command";
 import { Button } from "@/components/ui/button";
 import type { Snapshot } from "@/lib/data/types";
-import type { TabId } from "@/components/tab-ids";
+import { TAB_IDS, TAB_LABELS, type TabId } from "@/components/tab-ids";
 
 interface CommandPaletteProps {
   snapshot: Snapshot;
@@ -23,9 +22,9 @@ interface CommandPaletteProps {
 
 export function CommandPalette({ snapshot, onJump }: CommandPaletteProps) {
   const [open, setOpen] = useState(false);
-  const [, setAgentId] = useQueryState("agent_id", agentIdParam);
-  const [, setTeam] = useQueryState("team", teamParam);
-  const [, setTeamRole] = useQueryState("team_role", teamRoleParam);
+  const [, setAgentId] = useQueryState("agent_id", parseAsString);
+  const [, setTeam] = useQueryState("team", parseAsString);
+  const [, setTeamRole] = useQueryState("team_role", parseAsString);
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -66,24 +65,14 @@ export function CommandPalette({ snapshot, onJump }: CommandPaletteProps) {
           <CommandEmpty>No results.</CommandEmpty>
 
           <CommandGroup heading="Tabs">
-            {(
-              [
-                ["Coverage", "coverage"],
-                ["Validation", "validation"],
-                ["Supervisor", "supervisor"],
-                ["Pods", "pods"],
-                ["Shifts", "shifts"],
-                ["Cubicles", "cubicles"],
-                ["Roster", "roster"],
-              ] as Array<[string, TabId]>
-            ).map(([label, id]) => (
+            {TAB_IDS.map((id) => (
               <CommandItem
                 key={id}
-                value={`tab ${label}`}
+                value={`tab ${TAB_LABELS[id]}`}
                 onSelect={() => run(id)}
               >
                 <Briefcase className="h-4 w-4 text-muted-foreground" />
-                {label}
+                {TAB_LABELS[id]}
               </CommandItem>
             ))}
           </CommandGroup>
@@ -134,13 +123,13 @@ export function CommandPalette({ snapshot, onJump }: CommandPaletteProps) {
             {snapshot.shift_catalog.map((s) => (
               <CommandItem
                 key={s.shift_id}
-                value={`shift ${s.shift_id} ${s.label}`}
+                value={`shift ${s.shift_id} ${s.shift_class} ${s.start_clock} ${s.end_clock}`}
                 onSelect={() => run("shifts")}
               >
                 <Clock className="h-4 w-4 text-muted-foreground" />
-                <span>{s.label}</span>
+                <span className="font-mono">{s.shift_id}</span>
                 <span className="ml-auto text-xs text-muted-foreground">
-                  {s.start_clock}–{s.end_clock}
+                  {s.start_clock}–{s.end_clock} · {s.shift_class}
                 </span>
               </CommandItem>
             ))}

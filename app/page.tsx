@@ -1,5 +1,5 @@
 import { Suspense } from "react";
-import { getLatestSnapshot, getSnapshotTakenAt, listOptimizations } from "@/lib/data/snapshot";
+import { getLatestSnapshot, listOptimizations } from "@/lib/data/snapshot";
 import { PlatformShell } from "@/components/platform-shell";
 import { Skeleton } from "@/components/ui/skeleton";
 
@@ -19,12 +19,11 @@ async function PlatformLoader({ searchParams }: { searchParams: Promise<{ opt_id
   const resolvedParams = await searchParams;
   const optId = resolvedParams.opt_id;
 
-  const [snapshot, takenAt, optimizations] = await Promise.all([
+  const [snapshot, optimizations] = await Promise.all([
     getLatestSnapshot(optId),
-    getSnapshotTakenAt(optId),
     listOptimizations(),
   ]);
-  return <PlatformShell snapshot={snapshot} takenAt={takenAt} optimizations={optimizations} />;
+  return <PlatformShell snapshot={snapshot} optimizations={optimizations} />;
 }
 
 function PageSkeleton() {
@@ -33,7 +32,6 @@ function PageSkeleton() {
       <div className="border-b surface-panel">
         <div className="mx-auto max-w-7xl px-6 py-4">
           <Skeleton className="h-6 w-72" />
-          <Skeleton className="mt-2 h-4 w-96" />
         </div>
       </div>
       <div className="mx-auto max-w-7xl px-6 py-6 space-y-4">

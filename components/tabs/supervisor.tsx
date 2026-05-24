@@ -162,7 +162,6 @@ export function SupervisorTab({ snapshot }: SupervisorTabProps) {
     <div className="space-y-5">
       <SectionCard
         title="Cross-team coverage matrix"
-        description="Each row is one supervisor's team; cells show hourly overlap, shift mix, and role mix."
         toolbar={
           <div className="flex items-center gap-2 flex-wrap">
             <Badge variant="secondary">
@@ -175,14 +174,9 @@ export function SupervisorTab({ snapshot }: SupervisorTabProps) {
       >
         <div className="space-y-6">
           <div>
-            <div className="flex items-baseline justify-between mb-2">
-              <h3 className="font-semibold text-sm">
-                Team coverage timeline · {day}
-              </h3>
-              <span className="text-xs text-muted-foreground">
-                Each ribbon is one person on shift. Color = shift template.
-              </span>
-            </div>
+            <h3 className="font-semibold text-sm mb-2">
+              Team coverage timeline · {day}
+            </h3>
             <SupervisorGantt
               snapshot={snapshot}
               day={day}
@@ -207,9 +201,6 @@ export function SupervisorTab({ snapshot }: SupervisorTabProps) {
             <h3 className="font-semibold text-sm mb-2">
               Team × Hour coverage
             </h3>
-            <p className="text-xs text-muted-foreground mb-2">
-              Scheduled headcount per team by hour; bottom row totals vs call volume.
-            </p>
             <div className="overflow-x-auto">
               <table className="text-xs border-separate border-spacing-0 min-w-full">
                 <thead>
@@ -220,7 +211,7 @@ export function SupervisorTab({ snapshot }: SupervisorTabProps) {
                         key={h}
                         className="p-2 text-center text-[10px] text-muted-foreground font-mono"
                       >
-                        {h.slice(0, 2)}
+                        {h}
                       </th>
                     ))}
                   </tr>
@@ -235,7 +226,7 @@ export function SupervisorTab({ snapshot }: SupervisorTabProps) {
                         <td
                           key={i}
                           className={`p-1 text-center num ${cellTone(v, matrices.maxHourCell)}`}
-                          title={`${podName} · ${snapshot.meta.hours[i]} · ${v.toFixed(1)} scheduled`}
+                          title={`${podName} · ${snapshot.meta.hours[i]} · ${v.toFixed(1)} CSA`}
                         >
                           {v ? v.toFixed(1) : ""}
                         </td>
@@ -335,9 +326,6 @@ export function SupervisorTab({ snapshot }: SupervisorTabProps) {
 
             <div>
               <h3 className="font-semibold text-sm mb-2">Team × Role mix</h3>
-              <p className="text-xs text-muted-foreground mb-2">
-                CSA, CSA Lead, NDS, SDS, and SDS Lead counts per team.
-              </p>
               <div className="overflow-x-auto">
                 <table className="text-xs border-separate border-spacing-0 min-w-full">
                   <thead>
@@ -407,10 +395,7 @@ export function SupervisorTab({ snapshot }: SupervisorTabProps) {
         </div>
       </SectionCard>
 
-      <SectionCard
-        title="Supervisor coverage"
-        description="At least one supervisor on duty every hour; KPIs from the supervisor schedule solver."
-      >
+      <SectionCard title="Supervisor coverage">
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           <StatTile
             label="Hours covered ≥ 1"
@@ -439,10 +424,7 @@ export function SupervisorTab({ snapshot }: SupervisorTabProps) {
       <CoverageProof24x7 snapshot={snapshot} csaGrid={csaGrid} />
       <OvernightProof snapshot={snapshot} />
 
-      <SectionCard
-        title="Supervisor → team roster"
-        description="Each supervisor's team with shift windows and role labels."
-      >
+      <SectionCard title="Team roster">
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {Object.entries(directReports).map(([supId, podsForSup]) => (
             <div key={supId} className="border rounded-lg p-4 bg-background">
@@ -608,7 +590,6 @@ function CoverageProof24x7({
   return (
     <SectionCard
       title="24/7 agent + supervisor coverage proof"
-      description="At least one CSA and one supervisor every hour, computed from shift structure."
       toolbar={
         <Badge
           variant={allOk ? "success" : csaGapCells > 0 ? "destructive" : "warning"}
@@ -671,7 +652,7 @@ function CoverageProof24x7({
                     : !c.supOk
                       ? "bg-rose-50 dark:bg-rose-950/30"
                       : "bg-amber-50 dark:bg-amber-950/30";
-                  const tip = `Sup: ${c.sups.join(",") || "GAP"} | CSA avg ${c.avgCsa.toFixed(1)}`;
+                  const tip = `${c.avgCsa.toFixed(1)} CSA · ${c.sups.length} sup`;
                   return (
                     <td
                       key={c.day}
@@ -726,7 +707,6 @@ function OvernightProof({ snapshot }: { snapshot: Snapshot }) {
   return (
     <SectionCard
       title="Overnight coverage proof · 00:00–06:00"
-      description="Every overnight hour has at least one named supervisor on duty."
       toolbar={
         <Badge variant={allCovered ? "success" : "destructive"}>
           {allCovered ? "All overnight hours covered" : "Coverage gap detected"}

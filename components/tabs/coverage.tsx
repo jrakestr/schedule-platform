@@ -120,22 +120,18 @@ export function CoverageTab({ snapshot, leadPct }: CoverageTabProps) {
             <StatTile
               label="Daily call volume"
               value={f0(stats.offered)}
-              hint="Forecasted calls that day."
             />
             <StatTile
               label="Proposed CSA hours"
               value={f1(stats.staff / 2)}
-              hint="Effective proposed CSA agent-hours (Lead slider applied)."
             />
             <StatTile
               label="Current/Legacy CSA hours"
               value={f1(stats.legacyStaff / 2)}
-              hint="Effective current CSA agent-hours."
             />
             <StatTile
               label="Volume-matched share"
               value={pct(stats.matchedShare)}
-              hint="Share of the day's calls that land in hours where CSAs are scheduled."
               tone={
                 stats.matchedShare >= 0.8
                   ? "text-emerald-700 dark:text-emerald-400"

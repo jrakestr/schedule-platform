@@ -452,7 +452,7 @@ export function ValidationTab({ snapshot, leadPct }: ValidationTabProps) {
                             <div className="space-y-1 py-1 min-w-[150px]">
                               <div
                                 className="h-1 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden"
-                                title={`Calls: ${(r.volShare * 100).toFixed(1)}%`}
+                                title={`Calls ${(r.volShare * 100).toFixed(1)}%`}
                               >
                                 <div
                                   className="h-full bg-slate-400 dark:bg-slate-500"
@@ -461,7 +461,7 @@ export function ValidationTab({ snapshot, leadPct }: ValidationTabProps) {
                               </div>
                               <div
                                 className="h-1 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden"
-                                title={`Proposed: ${(r.staffShare * 100).toFixed(1)}%`}
+                                title={`Proposed ${(r.staffShare * 100).toFixed(1)}%`}
                               >
                                 <div
                                   className="h-full bg-indigo-500 dark:bg-indigo-600"
@@ -470,7 +470,7 @@ export function ValidationTab({ snapshot, leadPct }: ValidationTabProps) {
                               </div>
                               <div
                                 className="h-1 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden"
-                                title={`Legacy: ${(r.legacyStaffShare * 100).toFixed(1)}%`}
+                                title={`Legacy ${(r.legacyStaffShare * 100).toFixed(1)}%`}
                               >
                                 <div
                                   className="h-full bg-orange-500 dark:bg-orange-600"
@@ -505,7 +505,7 @@ export function ValidationTab({ snapshot, leadPct }: ValidationTabProps) {
                             <div className="space-y-1.5 py-1 min-w-[130px]">
                               <div
                                 className="h-2 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden"
-                                title={`Calls: ${(r.volShare * 100).toFixed(1)}%`}
+                                title={`Calls ${(r.volShare * 100).toFixed(1)}%`}
                               >
                                 <div
                                   className="h-full bg-slate-400 dark:bg-slate-500"
@@ -514,7 +514,7 @@ export function ValidationTab({ snapshot, leadPct }: ValidationTabProps) {
                               </div>
                               <div
                                 className="h-2 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden"
-                                title={`Legacy Staff: ${(r.legacyStaffShare * 100).toFixed(1)}%`}
+                                title={`Legacy ${(r.legacyStaffShare * 100).toFixed(1)}%`}
                               >
                                 <div
                                   className="h-full bg-orange-500 dark:bg-orange-600"
@@ -544,7 +544,7 @@ export function ValidationTab({ snapshot, leadPct }: ValidationTabProps) {
                             <div className="space-y-1.5 py-1 min-w-[130px]">
                               <div
                                 className="h-2 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden"
-                                title={`Calls: ${(r.volShare * 100).toFixed(1)}%`}
+                                title={`Calls ${(r.volShare * 100).toFixed(1)}%`}
                               >
                                 <div
                                   className="h-full bg-slate-400 dark:bg-slate-500"
@@ -553,7 +553,7 @@ export function ValidationTab({ snapshot, leadPct }: ValidationTabProps) {
                               </div>
                               <div
                                 className="h-2 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden"
-                                title={`Proposed Staff: ${(r.staffShare * 100).toFixed(1)}%`}
+                                title={`Proposed ${(r.staffShare * 100).toFixed(1)}%`}
                               >
                                 <div
                                   className="h-full bg-indigo-500 dark:bg-indigo-600"
@@ -575,7 +575,7 @@ export function ValidationTab({ snapshot, leadPct }: ValidationTabProps) {
                           type="button"
                           onClick={() => drillToRoster(r.hour)}
                           className="opacity-0 hover:opacity-100 group-hover:opacity-100 transition-opacity p-1.5 rounded-md text-muted-foreground hover:text-primary hover:bg-primary/10"
-                          title={`See roster on shift at ${r.hour}`}
+                          title={r.hour}
                           aria-label={`Drill to roster for ${r.hour}`}
                         >
                           <ArrowRight className="h-4 w-4" />

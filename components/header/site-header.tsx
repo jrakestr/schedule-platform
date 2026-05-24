@@ -1,8 +1,12 @@
 "use client";
 
-import { useMemo, useEffect, useState } from "react";
+import { useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import { useQueryState } from "nuqs";
+import { Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { deleteOptimizationRun } from "@/lib/api/optimizer";
+import { Button } from "@/components/ui/button";
 import { LeadSlider } from "@/components/header/lead-slider";
 import { ThemeToggle } from "@/components/header/theme-toggle";
 import { CommandPalette } from "@/components/header/command-palette";
@@ -29,21 +33,22 @@ import type { OptimizationMeta } from "@/lib/data/snapshot";
 
 interface SiteHeaderProps {
   snapshot: Snapshot;
-  takenAt: string | null;
   leadPct: number;
   setLeadPct: (n: number) => void;
   onJump: (tab: TabId) => void;
   optimizations: OptimizationMeta[];
+  sidebarToggle?: React.ReactNode;
 }
 
 export function SiteHeader({
   snapshot,
-  takenAt,
   leadPct,
   setLeadPct,
   onJump,
   optimizations,
+  sidebarToggle,
 }: SiteHeaderProps) {
+  const router = useRouter();
   const [optId, setOptId] = useQueryState("opt_id", {
     defaultValue: "",
     clearOnDefault: true,
@@ -63,24 +68,37 @@ export function SiteHeader({
 
   const supOK = snapshot.supervisor_schedule.min_coverage >= 1;
 
-  const [refreshedLabel, setRefreshedLabel] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (takenAt) {
-      setRefreshedLabel(
-        new Date(takenAt).toLocaleString(undefined, {
-          month: "short",
-          day: "numeric",
-          hour: "2-digit",
-          minute: "2-digit",
-        })
-      );
-    }
-  }, [takenAt]);
-
   const validOptimizations = useMemo(() => {
     return optimizations.filter((opt) => opt.id);
   }, [optimizations]);
+
+  const activeRun = useMemo(
+    () => validOptimizations.find((opt) => opt.id === optId) ?? null,
+    [validOptimizations, optId],
+  );
+
+  const [deletingRun, setDeletingRun] = useState(false);
+
+  const handleDeleteActiveRun = async () => {
+    if (!optId || !activeRun || isViewer) return;
+    if (
+      !confirm(
+        `Permanently delete optimization run "${activeRun.run_name}"? This cannot be undone.`,
+      )
+    ) {
+      return;
+    }
+    setDeletingRun(true);
+    try {
+      await deleteOptimizationRun(optId);
+      await setOptId("");
+      router.refresh();
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : "Failed to delete optimization run.");
+    } finally {
+      setDeletingRun(false);
+    }
+  };
 
   return (
     <TooltipProvider>
@@ -97,43 +115,57 @@ export function SiteHeader({
           }}
           aria-hidden
         />
-        <div className="relative z-10 mx-auto max-w-7xl px-6 py-5 flex flex-wrap items-start gap-6 justify-between">
-          <div className="flex-1 min-w-[280px]">
-            <p className="text-[10px] uppercase tracking-[0.2em] text-primary/80 font-semibold mb-1">
-              Staffing review
-            </p>
-            <h1 className="text-xl font-semibold tracking-tight text-foreground">
-              MJM ParaTransit · Schedule Review
-            </h1>
-            <p className="text-xs text-muted-foreground mt-1.5 num font-mono leading-relaxed">
-              Call volume · {snapshot.meta.source_rows.toLocaleString()} call
-              records · forecast weeks {snapshot.meta.forecast_weeks.join(", ")}
-              {refreshedLabel ? ` · refreshed ${refreshedLabel}` : null}
-            </p>
+        <div className="relative z-10 mx-auto flex max-w-7xl flex-wrap items-start justify-between gap-6 px-4 py-5 sm:px-6">
+          <div className="flex min-w-[280px] flex-1 items-start gap-3">
+            {sidebarToggle}
+            <div>
+              <p className="mb-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-primary/80">
+                Scheduling application
+              </p>
+              <h1 className="text-xl font-semibold tracking-tight text-foreground">
+                MJM Brokerage Scheduling Application
+              </h1>
+            </div>
           </div>
           <div className="flex items-center gap-4 flex-wrap">
             <div className="flex flex-col gap-1 min-w-[180px]">
               <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
                 Roster run
               </span>
-              <Select
-                value={optId || "default"}
-                onValueChange={(val) => setOptId(val === "default" ? "" : val)}
-              >
-                <SelectTrigger className="w-[180px] h-9 text-xs surface-inset">
-                  <SelectValue placeholder="Default Baseline" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="default" className="text-xs">
-                    Default Baseline
-                  </SelectItem>
-                  {validOptimizations.map((opt) => (
-                    <SelectItem key={opt.id} value={opt.id} className="text-xs">
-                      {opt.run_name}
+              <div className="flex items-center gap-1.5">
+                <Select
+                  value={optId || "default"}
+                  onValueChange={(val) => setOptId(val === "default" ? "" : val)}
+                >
+                  <SelectTrigger className="w-[180px] h-9 text-xs surface-inset">
+                    <SelectValue placeholder="Default Baseline" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="default" className="text-xs">
+                      Default Baseline
                     </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+                    {validOptimizations.map((opt) => (
+                      <SelectItem key={opt.id} value={opt.id} className="text-xs">
+                        {opt.run_name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {optId && activeRun && !isViewer && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="h-9 w-9 shrink-0 text-rose-500 hover:text-rose-600 hover:bg-rose-500/10"
+                    onClick={handleDeleteActiveRun}
+                    disabled={deletingRun}
+                    title={`Delete run "${activeRun.run_name}"`}
+                    aria-label={`Delete run ${activeRun.run_name}`}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                )}
+              </div>
             </div>
 
             <KpiTile
@@ -182,7 +214,6 @@ export function SiteHeader({
             </div>
           </div>
         </div>
-        <FixedBanner />
       </header>
     </TooltipProvider>
   );
@@ -229,19 +260,5 @@ function KpiTile({ label, children, tone, tip, onClick }: KpiTileProps) {
         {tip}
       </TooltipContent>
     </Tooltip>
-  );
-}
-
-function FixedBanner() {
-  return (
-    <div className="relative border-t border-amber-200/80 dark:border-amber-900/50 bg-gradient-to-r from-amber-100/90 via-amber-50/80 to-amber-100/90 dark:from-amber-950/40 dark:via-amber-950/25 dark:to-amber-950/40">
-      <div className="mx-auto max-w-7xl px-6 py-2 flex items-center justify-between text-xs text-amber-950 dark:text-amber-200 font-medium">
-        <div>
-          <span className="font-semibold text-amber-950 dark:text-amber-100">Fixed 53 roster.</span>{" "}
-          36 CSA (4 Lead) · 8 SDS (2 Lead) · 3 NDS · 6 Supervisor. Redistribution
-          only — no headcount requests.
-        </div>
-      </div>
-    </div>
   );
 }

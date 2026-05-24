@@ -23,7 +23,7 @@ import { TeamLink } from "@/components/team/team-link";
 import { RoleBadgeLink } from "@/components/team/role-badge-link";
 import { AgentLink } from "@/components/agent/agent-link";
 import { PodBarChart } from "@/components/charts/pod-bar-chart";
-import { PodTangleChart } from "@/components/charts/pod-tangle-chart";
+import { PodRoleStackChart } from "@/components/charts/pod-role-stack-chart";
 import { SectionCard } from "@/components/shared/section-card";
 import {
   Accordion,
@@ -109,16 +109,14 @@ export function PodsTab({ snapshot }: PodsTabProps) {
   return (
     <div className="space-y-5">
       <SectionCard
-        title="Team structure"
-        description="Supervisor → team → role flow for the selected day."
+        title="Role composition"
         toolbar={<DayTabs day={day} onChange={setDay} />}
       >
-        <PodTangleChart snapshot={snapshot} podOrder={order} day={day} />
+        <PodRoleStackChart snapshot={snapshot} podOrder={order} day={day} />
       </SectionCard>
 
       <SectionCard
         title="Hourly staffing shape"
-        description="Scheduled headcount by team for the selected day."
         toolbar={<DayTabs day={day} onChange={setDay} />}
       >
         <PodBarChart snapshot={snapshot} podOrder={order} day={day} />

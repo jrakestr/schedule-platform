@@ -29,7 +29,7 @@ function RoleColumnHeader({
 }) {
   const [, setTab] = useQueryState(
     "tab",
-    parseAsStringEnum<TabId>([...TAB_IDS]).withDefault("coverage"),
+    parseAsStringEnum<TabId>([...TAB_IDS]).withDefault("raci"),
   );
   const [, setRole] = useQueryState("role", { defaultValue: "", clearOnDefault: true });
 
@@ -50,17 +50,11 @@ function RoleColumnHeader({
 export function RaciTab({ snapshot }: RaciTabProps) {
   return (
     <div className="space-y-5">
-      <SectionCard
-        title="Operational hierarchy"
-        description="Supervisor → team → role mix across six pods."
-      >
+      <SectionCard>
         <OrgHierarchyChart snapshot={snapshot} />
       </SectionCard>
 
-      <SectionCard
-        title="Operations RACI"
-        description="Inbound voice vs scheduling ownership under surge conditions. Role column headers open the roster filtered by role."
-      >
+      <SectionCard title="Operations RACI">
       <div className="border rounded-md overflow-hidden bg-card">
         <Table>
           <TableHeader>

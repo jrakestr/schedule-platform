@@ -80,7 +80,7 @@ export function PodBarChart({ snapshot, podOrder, day }: PodBarChartProps) {
     const data: HourRow[] = Array.from({ length: 24 }, (_, h) => {
       const row: HourRow = {
         hour: h,
-        label: snapshot.meta.hours[h]?.slice(0, 2) ?? String(h).padStart(2, "0"),
+        label: snapshot.meta.hours[h] ?? `${String(h).padStart(2, "0")}:00`,
       };
       for (const pod of podOrder) {
         row[pod] = hourly[pod]?.[h] ?? 0;
@@ -256,11 +256,8 @@ export function PodBarChart({ snapshot, podOrder, day }: PodBarChartProps) {
     bars
       .merge(barsEnter)
       .on("mousemove", (event, d) => {
-        const total = colTotals[d.hour] ?? 0;
         showTip(
-          `<div class="font-semibold">${d.key}</div>` +
-            `<div>${String(d.hour).padStart(2, "0")}:00 · ${d.value.toFixed(1)} scheduled</div>` +
-            `<div class="text-muted-foreground">System total ${total.toFixed(1)}</div>`,
+          `${d.key} · ${chartData[d.hour]?.label ?? `${String(d.hour).padStart(2, "0")}:00`} · ${d.value.toFixed(1)} CSA`,
           event,
         );
       })

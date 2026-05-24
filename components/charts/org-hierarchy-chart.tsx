@@ -38,7 +38,7 @@ function roleCounts(members: Agent[]) {
 function OrgRoleBadge({ count, label }: { count: number; label: string }) {
   const [, setTab] = useQueryState(
     "tab",
-    parseAsStringEnum<TabId>([...TAB_IDS]).withDefault("coverage"),
+    parseAsStringEnum<TabId>([...TAB_IDS]).withDefault("raci"),
   );
   const [, setRole] = useQueryState("role", { defaultValue: "", clearOnDefault: true });
 
@@ -94,7 +94,6 @@ export function OrgHierarchyChart({ snapshot }: OrgHierarchyChartProps) {
   return (
     <div className="space-y-6">
       <div className="text-center space-y-1">
-        <div className="text-sm font-semibold">MJM Contact Center Operations</div>
         <div className="text-xs text-muted-foreground">
           {supervisors.length} Supervisor · {podSummaries.length} teams ·{" "}
           {snapshot.meta.total_bodies} roster bodies

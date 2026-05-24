@@ -169,7 +169,6 @@ export function CubiclesTab({ snapshot }: CubiclesTabProps) {
                         const v = occ[d]?.[hi] ?? 0;
                         const isColHovered = hoveredDay === d;
                         const isCellHovered = isRowHovered && isColHovered;
-                        const pct = cap ? (v / cap) * 100 : 0;
                         return (
                           <Tooltip key={d} delayDuration={100}>
                             <TooltipTrigger asChild>
@@ -194,10 +193,7 @@ export function CubiclesTab({ snapshot }: CubiclesTabProps) {
                               </td>
                             </TooltipTrigger>
                             <TooltipContent side="top" className="text-xs">
-                              <div className="font-semibold">{d} at {h}</div>
-                              <div className="text-muted-foreground mt-0.5">
-                                {v.toFixed(1)} of {cap} cubicles occupied ({pct.toFixed(0)}% utilization)
-                              </div>
+                              {d} {h} · {v.toFixed(1)}/{cap}
                             </TooltipContent>
                           </Tooltip>
                         );

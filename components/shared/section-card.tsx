@@ -52,7 +52,7 @@ export function SectionCard({
       <div className="relative z-10 h-full w-full">
         {(title || toolbar) && (
           <header className="flex flex-wrap items-start justify-between gap-3 border-b px-5 py-3.5">
-            <div className="min-w-0">
+            <div className="min-w-0 flex-1 basis-full sm:basis-auto">
               {title && (
                 <h2 className="font-semibold text-sm leading-snug tracking-tight">
                   {title}
@@ -64,7 +64,11 @@ export function SectionCard({
                 </p>
               )}
             </div>
-            {toolbar && <div className="flex items-center gap-2 shrink-0">{toolbar}</div>}
+            {toolbar && (
+              <div className="flex min-w-0 w-full sm:w-auto max-w-full items-center gap-2 overflow-x-auto">
+                {toolbar}
+              </div>
+            )}
           </header>
         )}
         <div className="p-5">{children}</div>

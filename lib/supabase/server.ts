@@ -221,9 +221,10 @@ export function createWriteClient() {
       "Missing Supabase server credentials. Ensure NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are set.",
     );
   }
+  // RPCs (insert_optimization, etc.) live in public schema. Do NOT set
+  // db.schema to analytics — PostgREST does not expose that schema (PGRST106).
   return createClient(url, key, {
     auth: { persistSession: false, autoRefreshToken: false },
-    db: { schema: "analytics" },
     global: { headers: { "x-application-name": "schedule-platform-api" } },
   });
 }

@@ -1,8 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { useQueryState } from "nuqs";
-import { agentIdParam, teamParam, teamRoleParam } from "@/lib/navigation/panel-params";
+import { useQueryState, parseAsString } from "nuqs";
 import { cn } from "@/lib/utils";
 
 interface AgentLinkProps {
@@ -16,9 +15,9 @@ const DEFAULT_LINK_CLASS =
 
 /** Opens the agent profile panel by setting the shareable `agent_id` URL param. */
 export function AgentLink({ agentId, className, children }: AgentLinkProps) {
-  const [, setAgentId] = useQueryState("agent_id", agentIdParam);
-  const [, setTeam] = useQueryState("team", teamParam);
-  const [, setTeamRole] = useQueryState("team_role", teamRoleParam);
+  const [, setAgentId] = useQueryState("agent_id", parseAsString);
+  const [, setTeam] = useQueryState("team", parseAsString);
+  const [, setTeamRole] = useQueryState("team_role", parseAsString);
 
   if (!agentId) {
     return <>{children ?? null}</>;

@@ -27,7 +27,7 @@ import type { Snapshot, Agent, DOW } from "@/lib/data/types";
 import type { OptimizationMeta } from "@/lib/data/snapshot";
 import { useQueryState } from "nuqs";
 import { useRouter } from "next/navigation";
-import { launchOptimization, OptimizerLaunchError } from "@/lib/api/optimizer";
+import { launchOptimization, OptimizerLaunchError, deleteOptimizationRun } from "@/lib/api/optimizer";
 
 type RunState = "idle" | "launching" | "polling" | "succeeded" | "failed";
 
@@ -96,7 +96,6 @@ type ShiftKey = "sixHour" | "eightHour" | "tenHour" | "twelveHour" | "splitShift
 
 interface ShiftCardProps {
   title: string;
-  description: string;
   state: ShiftConstraint;
   onChange: (updated: ShiftConstraint) => void;
   colorClass: string;
@@ -104,17 +103,46 @@ interface ShiftCardProps {
   disabled?: boolean;
 }
 
+function toSafeCount(value: number): number {
+  if (!Number.isFinite(value)) return 0;
+  return Math.max(0, Math.round(value));
+}
+
+function toSafeCubicleCap(value: number): number {
+  if (!Number.isFinite(value)) return 34;
+  return Math.max(1, Math.round(value));
+}
+
 function getAbsoluteCount(sc: ShiftConstraint, totalHeadcount: number): number {
-  if (!sc.enabled) return 0;
-  if (sc.mode === "percentage") {
-    return Math.round((sc.percentage / 100) * totalHeadcount);
-  }
-  return sc.maxCount;
+  return toSafeCount(
+    !sc.enabled
+      ? 0
+      : sc.mode === "percentage"
+        ? (sc.percentage / 100) * totalHeadcount
+        : sc.maxCount,
+  );
+}
+
+function formatZodDetails(details: unknown): string | undefined {
+  if (!details || typeof details !== "object") return undefined;
+  const entries: string[] = [];
+  const walk = (node: unknown, path: string[]) => {
+    if (!node || typeof node !== "object") return;
+    const record = node as Record<string, unknown>;
+    if (Array.isArray(record._errors) && record._errors.length > 0) {
+      entries.push(`${path.join(".") || "payload"}: ${record._errors.join(", ")}`);
+    }
+    for (const [key, value] of Object.entries(record)) {
+      if (key === "_errors") continue;
+      walk(value, [...path, key]);
+    }
+  };
+  walk(details, []);
+  return entries.length > 0 ? entries.join("; ") : undefined;
 }
 
 const ShiftCard = memo(function ShiftCard({
   title,
-  description,
   state,
   onChange,
   colorClass,
@@ -126,12 +154,11 @@ const ShiftCard = memo(function ShiftCard({
   return (
     <div className={`p-5 rounded-lg border bg-card transition-all ${!state.enabled ? "opacity-60" : ""}`}>
       <div className="flex items-start justify-between">
-        <div className="space-y-1">
+        <div>
           <h4 className="font-semibold text-sm flex items-center gap-2 text-foreground">
             <span className={`inline-block w-2.5 h-2.5 rounded-full ${colorClass}`} />
             {title}
           </h4>
-          <p className="text-xs text-muted-foreground leading-snug">{description}</p>
         </div>
         <div className="flex items-center gap-1.5">
           <label htmlFor={`${title}-toggle`} className="text-xs text-muted-foreground cursor-pointer select-none">
@@ -430,8 +457,15 @@ export function OptimizerTab({ snapshot, onUpdateSnapshot, optimizations }: Opti
   }, []);
 
   const handleRunOptimization = async () => {
-    if (!runName.trim()) {
+    const trimmedName = runName.trim();
+    if (!trimmedName) {
       setErrorDetails("Optimization Run Name is required.");
+      return;
+    }
+    if (trimmedName.length < 3) {
+      setErrorDetails("Optimization Run Name must be at least 3 characters.");
+      setErrorCode("PREFLIGHT_VALIDATION_ERROR");
+      setRunState("failed");
       return;
     }
 
@@ -442,9 +476,9 @@ export function OptimizerTab({ snapshot, onUpdateSnapshot, optimizations }: Opti
     setSolvingStatus("Starting optimization run...");
 
     const payload = {
-      name: runName.trim(),
+      name: trimmedName,
       notes: notes.trim() || null,
-      cubicleCap: customCubicleCap,
+      cubicleCap: toSafeCubicleCap(customCubicleCap),
       shifts: {
         sixHour: {
           enabled: shifts.sixHour.enabled,
@@ -537,35 +571,41 @@ export function OptimizerTab({ snapshot, onUpdateSnapshot, optimizations }: Opti
 
       setTimeout(executePoll, 3000);
 
-    } catch (err: any) {
+    } catch (err: unknown) {
       setRunState("failed");
       setIsSolving(false);
       if (err instanceof OptimizerLaunchError) {
         setErrorCode(err.code);
-        setErrorDetails(err.message);
+        const detailText =
+          err.details && typeof err.details === "object"
+            ? formatZodDetails(err.details)
+            : undefined;
+        setErrorDetails(detailText ? `${err.message} (${detailText})` : err.message);
       } else {
         setErrorCode("UNKNOWN_LAUNCH_ERROR");
-        setErrorDetails(err?.message || "An unexpected error occurred during optimization.");
+        setErrorDetails(err instanceof Error ? err.message : "An unexpected error occurred during optimization.");
       }
     }
   };
 
-  const handleDeleteRun = async (id: string) => {
-    if (!confirm("Are you sure you want to permanently delete this optimization run?")) return;
+  const handleDeleteRun = async (id: string, runName?: string) => {
+    const label = runName ? `"${runName}"` : "this optimization run";
+    if (!confirm(`Permanently delete ${label}? This cannot be undone.`)) return;
     try {
-      const response = await fetch(`/api/optimize/delete?id=${id}`, {
-        method: "DELETE",
-      });
-      if (!response.ok) {
-        throw new Error("Failed to delete optimization run.");
-      }
+      await deleteOptimizationRun(id);
       if (optId === id) {
         setOptId("");
       }
+      setSelectedScenarios((prev) => prev.filter((x) => x !== id));
+      setScenarioPayloads((prev) => {
+        const next = { ...prev };
+        delete next[id];
+        return next;
+      });
       router.refresh();
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error(err);
-      alert(err?.message || "Deletion failed.");
+      alert(err instanceof Error ? err.message : "Deletion failed.");
     }
   };
 
@@ -609,7 +649,6 @@ export function OptimizerTab({ snapshot, onUpdateSnapshot, optimizations }: Opti
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
             <ShiftCard
               title="6-Hour Shifts"
-              description="Short twilight and mid-day shifts for late-day coverage."
               state={shifts.sixHour}
               onChange={handleSixHourChange}
               colorClass="bg-indigo-500"
@@ -619,7 +658,6 @@ export function OptimizerTab({ snapshot, onUpdateSnapshot, optimizations }: Opti
 
             <ShiftCard
               title="8-Hour Shifts"
-              description="Standard full-time weekday shifts — early, mid, late, and overnight."
               state={shifts.eightHour}
               onChange={handleEightHourChange}
               colorClass="bg-emerald-500"
@@ -629,7 +667,6 @@ export function OptimizerTab({ snapshot, onUpdateSnapshot, optimizations }: Opti
 
             <ShiftCard
               title="10-Hour Shifts"
-              description="Longer weekend and compressed shifts."
               state={shifts.tenHour}
               onChange={handleTenHourChange}
               colorClass="bg-amber-500"
@@ -639,7 +676,6 @@ export function OptimizerTab({ snapshot, onUpdateSnapshot, optimizations }: Opti
 
             <ShiftCard
               title="12-Hour Shifts"
-              description="Super-span on-clock blocks (about 12 hours) for toll-free and emergency coverage."
               state={shifts.twelveHour}
               onChange={handleTwelveHourChange}
               colorClass="bg-rose-500"
@@ -649,7 +685,6 @@ export function OptimizerTab({ snapshot, onUpdateSnapshot, optimizations }: Opti
 
             <ShiftCard
               title="Split Shifts"
-              description="Two phone blocks in one day — morning and afternoon — with unpaid time off in between."
               state={shifts.splitShift}
               onChange={handleSplitShiftChange}
               colorClass="bg-sky-500"
@@ -964,14 +999,18 @@ export function OptimizerTab({ snapshot, onUpdateSnapshot, optimizations }: Opti
                             {isActive ? "Deselect" : "Overlay"}
                           </Button>
                         )}
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="text-xs px-2.5 h-7 text-rose-500 hover:text-rose-600 hover:bg-rose-500/10"
-                          onClick={() => handleDeleteRun(opt.id)}
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </Button>
+                        {!isViewer && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="text-xs px-2.5 h-7 text-rose-500 hover:text-rose-600 hover:bg-rose-500/10"
+                            onClick={() => handleDeleteRun(opt.id, opt.run_name)}
+                            title="Delete this run"
+                          >
+                            <Trash2 className="h-3.5 w-3.5 mr-1" />
+                            Delete
+                          </Button>
+                        )}
                       </td>
                     </tr>
                   );

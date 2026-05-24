@@ -15,17 +15,17 @@ export const TAB_LABELS = {
 // This guarantees that any key added to TAB_LABELS is automatically a valid TabId.
 export type TabId = keyof typeof TAB_LABELS;
 
-// 3. Explicit tab order — RACI leads the narrative (roles → coverage).
+// 3. Explicit tab order — Matrix leads, then optimizer and coverage flow.
 export const TAB_IDS = [
   "raci",
+  "optimizer",
   "coverage",
-  "validation",
-  "supervisor",
-  "pods",
   "shifts",
+  "validation",
+  "pods",
+  "supervisor",
   "cubicles",
   "roster",
-  "optimizer",
 ] as const satisfies readonly TabId[];
 
 /**

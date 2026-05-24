@@ -8,8 +8,11 @@ export const shiftConstraintSchema = z.object({
 export const optimizerConstraintsSchema = z.object({
   name: z.string().trim().min(3, "Optimization run name must be at least 3 characters"),
   // Normalize empty strings to null for consistent DB state
-  notes: z.string().trim().max(500).optional().nullable().transform(val => val || null),
-  cubicleCap: z.number().int().positive("Cubicle capacity must be a positive number"),
+  notes: z
+    .union([z.string().trim().max(500), z.null()])
+    .optional()
+    .transform((val) => val ?? null),
+  cubicleCap: z.number().int().positive("Cubicle capacity must be a positive number").default(34),
   shifts: z.object({
     sixHour: shiftConstraintSchema,
     eightHour: shiftConstraintSchema,

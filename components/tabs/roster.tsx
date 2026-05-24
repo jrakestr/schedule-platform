@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 import { useQueryState, parseAsString } from "nuqs";
 import {
   type ColumnDef,
@@ -24,6 +24,7 @@ import {
   X,
 } from "lucide-react";
 import { AgentLink } from "@/components/agent/agent-link";
+import { TeamLink } from "@/components/team/team-link";
 import { SectionCard } from "@/components/shared/section-card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -96,8 +97,23 @@ function rosterOperationalRole(role: string, position: string): string | null {
 }
 
 export function RosterTab({ snapshot }: RosterTabProps) {
+  const [roleParam] = useQueryState("role", parseAsString);
   const [roleFilter, setRoleFilter] = useState<RoleFilter>("All");
   const [positionFilter, setPositionFilter] = useState<PositionFilter>("All");
+
+  useEffect(() => {
+    if (!roleParam) return;
+    if (roleParam === "Lead") {
+      setRoleFilter("All");
+      setPositionFilter("Lead");
+      return;
+    }
+    const match = ROLES.find((r) => r === roleParam);
+    if (match) {
+      setRoleFilter(match);
+      if (roleParam !== "Supervisor") setPositionFilter("All");
+    }
+  }, [roleParam]);
   const [sorting, setSorting] = useState<SortingState>([]);
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
   const [columnVisibility, setColumnVisibility] = useState<VisibilityState>({});
@@ -252,9 +268,12 @@ export function RosterTab({ snapshot }: RosterTabProps) {
       {
         accessorKey: "pod",
         header: "Team",
-        cell: ({ row }) => (
-          <span className="text-sm">{row.original.pod}</span>
-        ),
+        cell: ({ row }) =>
+          row.original.pod && row.original.pod !== "—" ? (
+            <TeamLink teamName={row.original.pod} className="text-sm font-normal" />
+          ) : (
+            <span className="text-sm text-muted-foreground">—</span>
+          ),
       },
       {
         accessorKey: "reports_to",

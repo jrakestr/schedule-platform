@@ -1,6 +1,8 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
+import { useQueryState } from "nuqs";
+import { cubicleParam } from "@/lib/navigation/panel-params";
 import { SectionCard } from "@/components/shared/section-card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -19,6 +21,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { AgentLink } from "@/components/agent/agent-link";
+import { CubiclePill } from "@/components/shared/cubicle-pill";
 import { cellTone } from "@/lib/compute/colors";
 import { DOW_LIST, type DOW, type Snapshot } from "@/lib/data/types";
 import { Search, X, RotateCcw, Info, User, HelpCircle } from "lucide-react";
@@ -28,6 +31,7 @@ interface CubiclesTabProps {
 }
 
 export function CubiclesTab({ snapshot }: CubiclesTabProps) {
+  const [cubicleFilter, setCubicleFilter] = useQueryState("cubicle", cubicleParam);
   const cap = snapshot.cubicles.cap;
   const occ = snapshot.cubicles.occupancy_by_day_hour;
 
@@ -94,15 +98,24 @@ export function CubiclesTab({ snapshot }: CubiclesTabProps) {
       const matchesShift =
         selectedShift === "all" || a.shift_id === selectedShift;
 
-      return matchesSearch && matchesRole && matchesShift;
+      const matchesCubicle =
+        !cubicleFilter ||
+        DOW_LIST.some((d) => String(a.cubicle_by_day?.[d as DOW] ?? "") === cubicleFilter);
+
+      return matchesSearch && matchesRole && matchesShift && matchesCubicle;
     });
-  }, [occupants, searchQuery, selectedRole, selectedShift]);
+  }, [occupants, searchQuery, selectedRole, selectedShift, cubicleFilter]);
 
   const handleResetFilters = () => {
     setSearchQuery("");
     setSelectedRole("all");
     setSelectedShift("all");
+    setCubicleFilter(null);
   };
+
+  useEffect(() => {
+    if (cubicleFilter) setSearchQuery(cubicleFilter);
+  }, [cubicleFilter]);
 
   return (
     <TooltipProvider>
@@ -289,7 +302,7 @@ export function CubiclesTab({ snapshot }: CubiclesTabProps) {
                 </Select>
               </div>
 
-              {(searchQuery || selectedRole !== "all" || selectedShift !== "all") && (
+              {(searchQuery || selectedRole !== "all" || selectedShift !== "all" || cubicleFilter) && (
                 <Button
                   variant="outline"
                   size="icon"
@@ -350,27 +363,15 @@ export function CubiclesTab({ snapshot }: CubiclesTabProps) {
                             className="p-2 text-center font-mono text-xs"
                           >
                             {v ? (
-                              <Tooltip delayDuration={150}>
-                                <TooltipTrigger asChild>
-                                  <span
-                                    onMouseEnter={() => setHoveredCubicle(String(v))}
-                                    onMouseLeave={() => setHoveredCubicle(null)}
-                                    className={`inline-flex items-center justify-center w-7 h-7 rounded-md font-bold transition-all duration-200 cursor-pointer select-none ${
-                                      isCurrentCubicleHovered
-                                        ? "bg-indigo-600 text-white shadow-md scale-110 ring-2 ring-indigo-400 z-10"
-                                        : "bg-indigo-50 text-indigo-800 dark:bg-indigo-950 dark:text-indigo-200 hover:bg-indigo-100 dark:hover:bg-indigo-900/60"
-                                    }`}
-                                  >
-                                    {v}
-                                  </span>
-                                </TooltipTrigger>
-                                <TooltipContent side="top" className="text-xs">
-                                  <div className="font-semibold">Cubicle {v}</div>
-                                  <div className="text-muted-foreground mt-0.5">
-                                    {a.id} assigned on {d}
-                                  </div>
-                                </TooltipContent>
-                              </Tooltip>
+                              <CubiclePill
+                                number={v}
+                                day={d}
+                                agentId={a.id}
+                                highlighted={Boolean(isCurrentCubicleHovered)}
+                                onMouseEnter={() => setHoveredCubicle(String(v))}
+                                onMouseLeave={() => setHoveredCubicle(null)}
+                                onClick={() => setCubicleFilter(String(v))}
+                              />
                             ) : (
                               <span className="text-muted-foreground/30 font-light">·</span>
                             )}

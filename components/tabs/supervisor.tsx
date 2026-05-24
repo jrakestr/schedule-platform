@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { AgentLink } from "@/components/agent/agent-link";
+import { TeamLink } from "@/components/team/team-link";
 import { SectionCard } from "@/components/shared/section-card";
 import { DayTabs } from "@/components/shared/day-tabs";
 import { StatTile } from "@/components/charts/stat-tile";
@@ -228,7 +229,7 @@ export function SupervisorTab({ snapshot }: SupervisorTabProps) {
                   {podNames.map((podName) => (
                     <tr key={podName}>
                       <td className="p-2 sticky left-0 bg-card border-r font-semibold">
-                        {podName}
+                        <TeamLink teamName={podName} className="text-xs" />
                       </td>
                       {matrices.podHourly[podName].map((v, i) => (
                         <td
@@ -299,7 +300,7 @@ export function SupervisorTab({ snapshot }: SupervisorTabProps) {
                     {podNames.map((podName) => (
                       <tr key={podName}>
                         <td className="p-2 sticky left-0 bg-card border-r font-semibold">
-                          {podName}
+                          <TeamLink teamName={podName} className="text-xs" />
                         </td>
                         {matrices.shiftIds.map((s) => {
                           const v = matrices.podShift[podName][s];
@@ -361,7 +362,7 @@ export function SupervisorTab({ snapshot }: SupervisorTabProps) {
                       return (
                         <tr key={podName}>
                           <td className="p-2 sticky left-0 bg-card border-r font-semibold">
-                            {podName}
+                            <TeamLink teamName={podName} className="text-xs" />
                           </td>
                           {ROLE_KEYS.map((r) => {
                             const v = matrices.podRole[podName][r];
@@ -445,7 +446,9 @@ export function SupervisorTab({ snapshot }: SupervisorTabProps) {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {Object.entries(directReports).map(([supId, podsForSup]) => (
             <div key={supId} className="border rounded-lg p-4 bg-background">
-              <div className="font-semibold font-mono">{supId}</div>
+              <div className="font-semibold">
+                <AgentLink agentId={supId} className="text-sm" />
+              </div>
               <div className="mt-2 mb-3 rounded-md bg-muted/40 border p-2">
                 <div className="text-xs font-semibold mb-1">
                   Supervisor schedule
@@ -475,7 +478,9 @@ export function SupervisorTab({ snapshot }: SupervisorTabProps) {
                     key={podName}
                     className="pl-3 border-l-2 border-border mt-2"
                   >
-                    <div className="font-medium text-sm">{podName}</div>
+                    <div className="font-medium text-sm">
+                      <TeamLink teamName={podName} />
+                    </div>
                     <div className="text-xs text-muted-foreground mb-1">
                       {p.type} · Lead{" "}
                       {p.lead_id !== "Coached by Supervisor" ? (

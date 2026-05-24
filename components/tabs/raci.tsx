@@ -1,8 +1,10 @@
 "use client";
 
+import { useQueryState, parseAsStringEnum } from "nuqs";
 import { OrgHierarchyChart } from "@/components/charts/org-hierarchy-chart";
 import { SectionCard } from "@/components/shared/section-card";
 import { Badge } from "@/components/ui/badge";
+import { TAB_IDS, type TabId } from "@/components/tab-ids";
 import {
   Table,
   TableBody,
@@ -17,6 +19,34 @@ interface RaciTabProps {
   snapshot: Snapshot;
 }
 
+
+function RoleColumnHeader({
+  label,
+  filterRole,
+}: {
+  label: string;
+  filterRole: string;
+}) {
+  const [, setTab] = useQueryState(
+    "tab",
+    parseAsStringEnum<TabId>([...TAB_IDS]).withDefault("coverage"),
+  );
+  const [, setRole] = useQueryState("role", { defaultValue: "", clearOnDefault: true });
+
+  return (
+    <button
+      type="button"
+      onClick={() => {
+        setRole(filterRole);
+        setTab("roster");
+      }}
+      className="font-semibold text-foreground hover:text-primary hover:underline cursor-pointer"
+    >
+      {label}
+    </button>
+  );
+}
+
 export function RaciTab({ snapshot }: RaciTabProps) {
   return (
     <div className="space-y-5">
@@ -29,18 +59,28 @@ export function RaciTab({ snapshot }: RaciTabProps) {
 
       <SectionCard
         title="Operations RACI"
-        description="Inbound voice vs scheduling ownership under surge conditions."
+        description="Inbound voice vs scheduling ownership under surge conditions. Role column headers open the roster filtered by role."
       >
       <div className="border rounded-md overflow-hidden bg-card">
         <Table>
           <TableHeader>
             <TableRow className="bg-muted/50">
               <TableHead className="font-semibold text-foreground">MJM Operational Task</TableHead>
-              <TableHead className="font-semibold text-foreground text-center">CSA</TableHead>
-              <TableHead className="font-semibold text-foreground text-center">SDS</TableHead>
-              <TableHead className="font-semibold text-foreground text-center">NDS</TableHead>
-              <TableHead className="font-semibold text-foreground text-center">CSA Lead</TableHead>
-              <TableHead className="font-semibold text-foreground text-center">Supervisor</TableHead>
+              <TableHead className="font-semibold text-foreground text-center">
+                <RoleColumnHeader label="CSA" filterRole="CSA" />
+              </TableHead>
+              <TableHead className="font-semibold text-foreground text-center">
+                <RoleColumnHeader label="SDS" filterRole="SDS" />
+              </TableHead>
+              <TableHead className="font-semibold text-foreground text-center">
+                <RoleColumnHeader label="NDS" filterRole="NDS" />
+              </TableHead>
+              <TableHead className="font-semibold text-foreground text-center">
+                <RoleColumnHeader label="CSA Lead" filterRole="Lead" />
+              </TableHead>
+              <TableHead className="font-semibold text-foreground text-center">
+                <RoleColumnHeader label="Supervisor" filterRole="Supervisor" />
+              </TableHead>
               <TableHead className="font-semibold text-foreground text-center">General Manager / PM</TableHead>
             </TableRow>
           </TableHeader>

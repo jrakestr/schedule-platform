@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useQueryState } from "nuqs";
+import { teamParam } from "@/lib/navigation/panel-params";
 import {
   DndContext,
   PointerSensor,
@@ -17,6 +19,8 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { GripVertical, RefreshCw, Users } from "lucide-react";
+import { TeamLink } from "@/components/team/team-link";
+import { RoleBadgeLink } from "@/components/team/role-badge-link";
 import { AgentLink } from "@/components/agent/agent-link";
 import { PodBarChart } from "@/components/charts/pod-bar-chart";
 import { PodTangleChart } from "@/components/charts/pod-tangle-chart";
@@ -29,7 +33,7 @@ import {
 } from "@/components/ui/accordion";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import {
   shiftColor,
   agentOperationalRole,
@@ -37,6 +41,7 @@ import {
   podAccentColor,
 } from "@/lib/compute/colors";
 import type { Agent, Pod, Snapshot, DOW } from "@/lib/data/types";
+import { cn } from "@/lib/utils";
 import { DayTabs } from "@/components/shared/day-tabs";
 
 interface PodsTabProps {
@@ -46,6 +51,7 @@ interface PodsTabProps {
 const STORAGE_KEY = "schedule-platform.pod-order";
 
 export function PodsTab({ snapshot }: PodsTabProps) {
+  const [highlightTeam] = useQueryState("team", teamParam);
   const canonicalOrder = useMemo(() => Object.keys(snapshot.pods), [snapshot.pods]);
   const [order, setOrder] = useState<string[]>(canonicalOrder);
   const [day, setDay] = useState<DOW>("Mon");
@@ -94,6 +100,12 @@ export function PodsTab({ snapshot }: PodsTabProps) {
   const isReordered =
     order.join("|") !== canonicalOrder.join("|");
 
+  useEffect(() => {
+    if (!highlightTeam) return;
+    const el = document.getElementById(`pod-card-${highlightTeam.replace(/\s+/g, "-")}`);
+    el?.scrollIntoView({ behavior: "smooth", block: "center" });
+  }, [highlightTeam]);
+
   return (
     <div className="space-y-5">
       <SectionCard
@@ -138,6 +150,8 @@ export function PodsTab({ snapshot }: PodsTabProps) {
             {order.map((name, index) => (
               <PodCard
                 key={name}
+                id={`pod-card-${name.replace(/\s+/g, "-")}`}
+                highlighted={highlightTeam === name}
                 name={name}
                 pod={snapshot.pods[name]}
                 accentColor={podAccentColor(index)}
@@ -154,15 +168,19 @@ export function PodsTab({ snapshot }: PodsTabProps) {
 }
 
 function PodCard({
+  id,
   name,
   pod,
   agents,
   accentColor,
+  highlighted,
 }: {
+  id?: string;
   name: string;
   pod: Pod;
   agents: Agent[];
   accentColor: string;
+  highlighted?: boolean;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
     useSortable({ id: name });
@@ -180,9 +198,13 @@ function PodCard({
 
   return (
     <Card
+      id={id}
       ref={setNodeRef}
       style={style}
-      className="overflow-hidden surface-panel hover:outline-primary/15 transition-[outline-color]"
+      className={cn(
+        "overflow-hidden surface-panel hover:outline-primary/15 transition-[outline-color,box-shadow]",
+        highlighted && "ring-2 ring-primary/40",
+      )}
     >
       <div
         className="h-1 w-full"
@@ -193,7 +215,9 @@ function PodCard({
       />
       <CardHeader className="pb-3 pt-4">
         <div className="flex items-start justify-between gap-2">
-          <CardTitle className="text-base">{name}</CardTitle>
+          <TeamLink teamName={name} className="text-base font-semibold hover:underline">
+            {name}
+          </TeamLink>
           <button
             type="button"
             className="text-muted-foreground hover:text-foreground cursor-grab touch-none"
@@ -220,29 +244,19 @@ function PodCard({
             {agents.length} {agents.length === 1 ? "member" : "members"}
           </Badge>
           {csaLead > 0 && (
-            <Badge variant="outline" className={roleBadgeClass("CSA Lead")}>
-              {csaLead} CSA Lead
-            </Badge>
+            <RoleBadgeLink teamName={name} roleLabel="CSA Lead" count={csaLead} />
           )}
           {csaLine > 0 && (
-            <Badge variant="outline" className={roleBadgeClass("CSA")}>
-              {csaLine} CSA
-            </Badge>
+            <RoleBadgeLink teamName={name} roleLabel="CSA" count={csaLine} />
           )}
           {ndsCount > 0 && (
-            <Badge variant="outline" className={roleBadgeClass("NDS")}>
-              {ndsCount} NDS
-            </Badge>
+            <RoleBadgeLink teamName={name} roleLabel="NDS" count={ndsCount} />
           )}
           {sdsLead > 0 && (
-            <Badge variant="outline" className={roleBadgeClass("SDS Lead")}>
-              {sdsLead} SDS Lead
-            </Badge>
+            <RoleBadgeLink teamName={name} roleLabel="SDS Lead" count={sdsLead} />
           )}
           {sdsLine > 0 && (
-            <Badge variant="outline" className={roleBadgeClass("SDS")}>
-              {sdsLine} SDS
-            </Badge>
+            <RoleBadgeLink teamName={name} roleLabel="SDS" count={sdsLine} />
           )}
         </div>
         <div className="text-xs font-medium pt-1">

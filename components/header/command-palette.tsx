@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useQueryState, parseAsString } from "nuqs";
+import { useQueryState } from "nuqs";
+import { agentIdParam, teamParam, teamRoleParam } from "@/lib/navigation/panel-params";
 import { Search, User, Briefcase, Building2, Shield, Clock } from "lucide-react";
 import {
   CommandDialog,
@@ -22,7 +23,9 @@ interface CommandPaletteProps {
 
 export function CommandPalette({ snapshot, onJump }: CommandPaletteProps) {
   const [open, setOpen] = useState(false);
-  const [, setAgentId] = useQueryState("agent_id", parseAsString);
+  const [, setAgentId] = useQueryState("agent_id", agentIdParam);
+  const [, setTeam] = useQueryState("team", teamParam);
+  const [, setTeamRole] = useQueryState("team_role", teamRoleParam);
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -113,7 +116,13 @@ export function CommandPalette({ snapshot, onJump }: CommandPaletteProps) {
               <CommandItem
                 key={name}
                 value={`pod ${name}`}
-                onSelect={() => run("pods")}
+                onSelect={() => {
+                  setOpen(false);
+                  setAgentId(null);
+                  setTeamRole(null);
+                  setTeam(name);
+                  onJump("pods");
+                }}
               >
                 <Building2 className="h-4 w-4 text-muted-foreground" />
                 {name}

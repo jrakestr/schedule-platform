@@ -13,6 +13,7 @@ import {
   Building,
 } from "lucide-react";
 import { AgentLink } from "@/components/agent/agent-link";
+import { TeamLink } from "@/components/team/team-link";
 import { SectionCard } from "@/components/shared/section-card";
 import { DayTabs } from "@/components/shared/day-tabs";
 import { StatTile } from "@/components/charts/stat-tile";
@@ -760,11 +761,19 @@ export function ValidationTab({ snapshot, leadPct }: ValidationTabProps) {
                       <div className="flex items-center justify-between text-[11px] text-muted-foreground">
                         <span className="flex items-center gap-1">
                           <Building className="h-3 w-3 text-muted-foreground/70" />
-                          {podName}
+                          {podName !== "—" ? (
+                            <TeamLink teamName={podName} className="text-[11px] font-normal" />
+                          ) : (
+                            podName
+                          )}
                         </span>
                         <span>
                           Supervisor:{" "}
-                          <strong className="font-semibold font-mono">{supervisorId}</strong>
+                          {supervisorId !== "Operations" ? (
+                            <AgentLink agentId={supervisorId} className="inline font-semibold" />
+                          ) : (
+                            <strong className="font-semibold font-mono">{supervisorId}</strong>
+                          )}
                         </span>
                       </div>
                     )}

@@ -140,6 +140,7 @@ export function SiteHeader({
               label="Volume-matched share"
               tone={toneClass(matched)}
               tip="Share of weekly call volume that lands in hours where staff is scheduled. Higher = better aligned distribution of the fixed roster."
+              onClick={() => onJump("coverage")}
             >
               <AnimatedNumber
                 value={matched}
@@ -155,6 +156,7 @@ export function SiteHeader({
                   : "text-rose-700 dark:text-rose-400"
               }
               tip="At least one supervisor on duty every hour of the week."
+              onClick={() => onJump("supervisor")}
             >
               {supOK ? "24/7" : "Gap"}
             </KpiTile>
@@ -163,6 +165,7 @@ export function SiteHeader({
               label="Approved roster"
               tone="text-foreground"
               tip="53 roster bodies: 36 CSA, 8 SDS, 3 NDS, 6 Supervisor."
+              onClick={() => onJump("roster")}
             >
               <AnimatedNumber value={snapshot.meta.total_bodies} />
             </KpiTile>
@@ -190,20 +193,37 @@ interface KpiTileProps {
   children: React.ReactNode;
   tone: string;
   tip: string;
+  onClick?: () => void;
 }
 
-function KpiTile({ label, children, tone, tip }: KpiTileProps) {
+function KpiTile({ label, children, tone, tip, onClick }: KpiTileProps) {
+  const inner = (
+    <>
+      <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium">
+        {label}
+      </div>
+      <div className={cn("text-lg font-semibold num leading-tight mt-0.5", tone)}>
+        {children}
+      </div>
+    </>
+  );
+
   return (
     <Tooltip>
       <TooltipTrigger asChild>
-        <div className="px-3.5 py-2.5 rounded-lg surface-inset transition-colors hover:outline-primary/20 cursor-help min-w-[7rem] kpi-stat">
-          <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium">
-            {label}
+        {onClick ? (
+          <button
+            type="button"
+            onClick={onClick}
+            className="px-3.5 py-2.5 rounded-lg surface-inset transition-colors hover:outline-primary/20 cursor-pointer min-w-[7rem] kpi-stat text-left"
+          >
+            {inner}
+          </button>
+        ) : (
+          <div className="px-3.5 py-2.5 rounded-lg surface-inset transition-colors hover:outline-primary/20 cursor-help min-w-[7rem] kpi-stat">
+            {inner}
           </div>
-          <div className={cn("text-lg font-semibold num leading-tight mt-0.5", tone)}>
-            {children}
-          </div>
-        </div>
+        )}
       </TooltipTrigger>
       <TooltipContent className="max-w-[240px] text-xs">
         {tip}

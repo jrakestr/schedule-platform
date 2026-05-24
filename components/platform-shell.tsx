@@ -16,6 +16,7 @@ import { CubiclesTab } from "@/components/tabs/cubicles";
 import { RosterTab } from "@/components/tabs/roster";
 import { OptimizerTab } from "@/components/tabs/optimizer";
 import { AgentProfilePanel } from "@/components/agent/agent-profile-panel";
+import { TeamProfilePanel } from "@/components/team/team-profile-panel";
 import { TAB_IDS, TAB_LABELS, type TabId } from "@/components/tab-ids";
 import type { Snapshot } from "@/lib/data/types";
 import { cn } from "@/lib/utils";
@@ -103,7 +104,8 @@ export function PlatformShell({ snapshot, takenAt, optimizations }: PlatformShel
         </main>
       </Tabs>
 
-      <AgentProfilePanel snapshot={activeSnapshot} />
+      <AgentProfilePanel snapshot={activeSnapshot} onJump={setTab} />
+      <TeamProfilePanel snapshot={activeSnapshot} onJump={setTab} />
 
       <footer className="border-t surface-panel mt-12">
         <div className="mx-auto max-w-7xl px-6 py-4 text-xs text-muted-foreground flex items-center justify-between">

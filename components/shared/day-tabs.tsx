@@ -13,7 +13,7 @@ export function DayTabs({ day, onChange, className }: DayTabsProps) {
   return (
     <div
       className={cn(
-        "inline-flex gap-1 bg-muted p-1 rounded-lg",
+        "grid grid-cols-7 gap-0.5 p-1 rounded-lg surface-inset w-full min-w-0 sm:w-auto sm:min-w-56",
         className,
       )}
       role="tablist"
@@ -26,10 +26,10 @@ export function DayTabs({ day, onChange, className }: DayTabsProps) {
           role="tab"
           aria-selected={d === day}
           className={cn(
-            "px-3 py-1 rounded-md text-sm transition-colors",
+            "min-w-0 px-1 py-1 rounded-md text-xs sm:text-sm transition-all font-medium text-center",
             d === day
-              ? "bg-background shadow-sm font-medium text-foreground"
-              : "text-muted-foreground hover:text-foreground",
+              ? "bg-primary text-primary-foreground shadow-sm"
+              : "text-muted-foreground hover:text-foreground hover:bg-accent/60",
           )}
           onClick={() => onChange(d)}
         >

@@ -1,7 +1,10 @@
 "use client";
 
+import { useQueryState, parseAsStringEnum } from "nuqs";
+import { OrgHierarchyChart } from "@/components/charts/org-hierarchy-chart";
 import { SectionCard } from "@/components/shared/section-card";
 import { Badge } from "@/components/ui/badge";
+import { TAB_IDS, type TabId } from "@/components/tab-ids";
 import {
   Table,
   TableBody,
@@ -10,25 +13,68 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import type { Snapshot } from "@/lib/data/types";
 
-export function RaciTab() {
+interface RaciTabProps {
+  snapshot: Snapshot;
+}
+
+
+function RoleColumnHeader({
+  label,
+  filterRole,
+}: {
+  label: string;
+  filterRole: string;
+}) {
+  const [, setTab] = useQueryState(
+    "tab",
+    parseAsStringEnum<TabId>([...TAB_IDS]).withDefault("raci"),
+  );
+  const [, setRole] = useQueryState("role", { defaultValue: "", clearOnDefault: true });
+
   return (
-    <SectionCard
-      title="Operations RACI & role delineation"
-      description="Delineation of responsibilities to protect specialized back-office scheduling and support teams from inbound call volume spikes."
-      bgImage="/28.jpg"
-      bgImageOpacity={0.03}
+    <button
+      type="button"
+      onClick={() => {
+        setRole(filterRole);
+        setTab("roster");
+      }}
+      className="font-semibold text-foreground hover:text-primary hover:underline cursor-pointer"
     >
+      {label}
+    </button>
+  );
+}
+
+export function RaciTab({ snapshot }: RaciTabProps) {
+  return (
+    <div className="space-y-5">
+      <SectionCard>
+        <OrgHierarchyChart snapshot={snapshot} />
+      </SectionCard>
+
+      <SectionCard title="Operations RACI">
       <div className="border rounded-md overflow-hidden bg-card">
         <Table>
           <TableHeader>
             <TableRow className="bg-muted/50">
               <TableHead className="font-semibold text-foreground">MJM Operational Task</TableHead>
-              <TableHead className="font-semibold text-foreground text-center">Inbound Agents (CSA)</TableHead>
-              <TableHead className="font-semibold text-foreground text-center">Same-Day (SDS)</TableHead>
-              <TableHead className="font-semibold text-foreground text-center">Next-Day (NDS)</TableHead>
-              <TableHead className="font-semibold text-foreground text-center">CSA Leads</TableHead>
-              <TableHead className="font-semibold text-foreground text-center">Supervisors</TableHead>
+              <TableHead className="font-semibold text-foreground text-center">
+                <RoleColumnHeader label="CSA" filterRole="CSA" />
+              </TableHead>
+              <TableHead className="font-semibold text-foreground text-center">
+                <RoleColumnHeader label="SDS" filterRole="SDS" />
+              </TableHead>
+              <TableHead className="font-semibold text-foreground text-center">
+                <RoleColumnHeader label="NDS" filterRole="NDS" />
+              </TableHead>
+              <TableHead className="font-semibold text-foreground text-center">
+                <RoleColumnHeader label="CSA Lead" filterRole="Lead" />
+              </TableHead>
+              <TableHead className="font-semibold text-foreground text-center">
+                <RoleColumnHeader label="Supervisor" filterRole="Supervisor" />
+              </TableHead>
               <TableHead className="font-semibold text-foreground text-center">General Manager / PM</TableHead>
             </TableRow>
           </TableHeader>
@@ -314,5 +360,6 @@ export function RaciTab() {
         </Table>
       </div>
     </SectionCard>
+    </div>
   );
 }

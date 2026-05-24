@@ -1,12 +1,13 @@
-import { NextResponse } from "next/server";
+import { connection, NextRequest, NextResponse } from "next/server";
 import { revalidateTag } from "next/cache";
 import { SNAPSHOT_TAG } from "@/lib/data/snapshot";
 import { createWriteClient } from "@/lib/supabase/server";
 
-export async function DELETE(request: Request) {
+export async function DELETE(request: NextRequest) {
+  await connection();
+
   try {
-    const { searchParams } = new URL(request.url);
-    const id = searchParams.get("id");
+    const id = request.nextUrl.searchParams.get("id");
 
     if (!id) {
       return NextResponse.json(
@@ -45,10 +46,11 @@ export async function DELETE(request: Request) {
 }
 
 // Support POST as a fail-safe fallback for environments with client verb limitations
-export async function POST(request: Request) {
+export async function POST(request: NextRequest) {
+  await connection();
+
   try {
-    const { searchParams } = new URL(request.url);
-    let id = searchParams.get("id");
+    let id = request.nextUrl.searchParams.get("id");
 
     if (!id) {
       const body = await request.json().catch(() => ({}));

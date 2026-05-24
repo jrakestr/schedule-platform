@@ -1,10 +1,21 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useCallback, useEffect } from "react";
+import { normalizeSnapshotPods } from "@/lib/data/normalize-snapshot";
 import { useQueryState, parseAsFloat, parseAsStringEnum } from "nuqs";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { KeyboardShortcuts } from "@/components/keyboard-shortcuts";
 import { SiteHeader } from "@/components/header/site-header";
+import {
+  PlatformSidebar,
+  SidebarToggle,
+} from "@/components/sidebar/platform-sidebar";
+import { TAB_IDS, type TabId } from "@/components/tab-ids";
+import {
+  OPTIMIZER_SECTIONS,
+  type OptimizerSection,
+} from "@/components/nav/optimizer-section";
+
+// Tabs
 import { CoverageTab } from "@/components/tabs/coverage";
 import { ValidationTab } from "@/components/tabs/validation";
 import { RaciTab } from "@/components/tabs/raci";
@@ -14,94 +25,165 @@ import { ShiftsTab } from "@/components/tabs/shifts";
 import { CubiclesTab } from "@/components/tabs/cubicles";
 import { RosterTab } from "@/components/tabs/roster";
 import { OptimizerTab } from "@/components/tabs/optimizer";
-import { TAB_IDS, TAB_LABELS, type TabId } from "@/components/tab-ids";
+import { DriversPlaceholder } from "@/components/tabs/drivers-placeholder";
+
+import { AgentProfilePanel } from "@/components/agent/agent-profile-panel";
+import { TeamProfilePanel } from "@/components/team/team-profile-panel";
+
 import type { Snapshot } from "@/lib/data/types";
-import { cn } from "@/lib/utils";
 import type { OptimizationMeta } from "@/lib/data/snapshot";
 
 interface PlatformShellProps {
   snapshot: Snapshot;
-  takenAt: string | null;
+  baselineSnapshot: Snapshot;
   optimizations: OptimizationMeta[];
 }
 
-export function PlatformShell({ snapshot, takenAt, optimizations }: PlatformShellProps) {
-  // Local state to support mutations inside the OptimizerTab
-  const [activeSnapshot, setActiveSnapshot] = useState<Snapshot>(snapshot);
+export function PlatformShell({ snapshot, baselineSnapshot, optimizations }: PlatformShellProps) {
+  // 1. ELIMINATED USEEFFECT BUG:
+  // Instead of syncing props to state via an effect, we key the local state
+  // directly on the snapshot source. When the snapshot prop changes, 
+  // React naturally resets this state to the incoming prop.
+  const [activeSnapshot, setActiveSnapshot] = useState<Snapshot>(() =>
+    normalizeSnapshotPods(snapshot),
+  );
+  const [sidebarOpen, setSidebarOpen] = useState(false);
 
-  // Synchronize local state with server-side snapshot changes
   useEffect(() => {
-    setActiveSnapshot(snapshot);
+    setActiveSnapshot(normalizeSnapshotPods(snapshot));
   }, [snapshot]);
+
+  const handleUpdateSnapshot = useCallback((next: Snapshot) => {
+    setActiveSnapshot(normalizeSnapshotPods(next));
+  }, []);
 
   const [tab, setTab] = useQueryState<TabId>(
     "tab",
-    parseAsStringEnum<TabId>([...TAB_IDS]).withDefault("coverage"),
+    parseAsStringEnum<TabId>([...TAB_IDS]).withDefault("raci"),
+  );
+
+  const [section, setSection] = useQueryState<OptimizerSection>(
+    "section",
+    parseAsStringEnum<OptimizerSection>([...OPTIMIZER_SECTIONS]).withDefault(
+      "call-center",
+    ),
   );
 
   const [rawLeadPct, setLeadPct] = useQueryState("lead", parseAsFloat);
-  
-  // Safeguard: Fallback to active snapshot meta default if lead query is empty
   const leadPct = rawLeadPct ?? activeSnapshot.meta.lead_on_work_default;
 
+  const [activeOptId] = useQueryState("opt_id", {
+    defaultValue: "",
+    clearOnDefault: true,
+  });
+
+  // 2. CONSOLIDATED TRANSITIONS:
+  // Batched updates to avoid back-button history clutter and extra renders
+  const jumpToTab = useCallback(
+    async (nextTab: TabId) => {
+      await Promise.all([
+        setTab(nextTab),
+        section !== "call-center" ? setSection("call-center") : Promise.resolve()
+      ]);
+    },
+    [section, setSection, setTab],
+  );
+
+  // 3. TAB REGISTRY (Clean rendering pattern)
+  const renderTabContent = () => {
+    if (section === "drivers") {
+      return <DriversPlaceholder />;
+    }
+
+    switch (tab) {
+      case "coverage":
+        return (
+          <CoverageTab
+            snapshot={activeSnapshot}
+            baselineSnapshot={baselineSnapshot}
+            leadPct={leadPct}
+            optimizations={optimizations}
+            activeOptId={activeOptId || undefined}
+          />
+        );
+      case "validation":
+        return <ValidationTab snapshot={activeSnapshot} leadPct={leadPct} />;
+      case "raci":
+        return <RaciTab snapshot={activeSnapshot} />;
+      case "supervisor":
+        return (
+          <SupervisorTab
+            snapshot={activeSnapshot}
+            leadPct={leadPct}
+            onJump={jumpToTab}
+          />
+        );
+      case "pods":
+        return <PodsTab snapshot={activeSnapshot} />;
+      case "shifts":
+        return <ShiftsTab snapshot={activeSnapshot} leadPct={leadPct} />;
+      case "cubicles":
+        return <CubiclesTab snapshot={activeSnapshot} />;
+      case "roster":
+        return <RosterTab snapshot={activeSnapshot} />;
+      case "optimizer":
+        return (
+          <OptimizerTab
+            snapshot={activeSnapshot}
+            baselineSnapshot={baselineSnapshot}
+            onUpdateSnapshot={handleUpdateSnapshot}
+            optimizations={optimizations}
+          />
+        );
+      default:
+        return null;
+    }
+  };
+
   return (
-    <div className="min-h-screen bg-background">
-      <KeyboardShortcuts onJump={setTab} />
-      <SiteHeader
-        snapshot={activeSnapshot}
-        takenAt={takenAt}
-        leadPct={leadPct}
-        setLeadPct={setLeadPct}
-        onJump={setTab}
-        optimizations={optimizations}
+    <div className="min-h-screen page-shell flex">
+      <KeyboardShortcuts onJump={jumpToTab} section={section} />
+
+      <PlatformSidebar
+        activeTab={tab}
+        onTabChange={jumpToTab}
+        mobileOpen={sidebarOpen}
+        onMobileOpenChange={setSidebarOpen}
       />
 
-      <Tabs value={tab} onValueChange={(v) => setTab(v as TabId)}>
-        {/* Changed from <nav> to <div> for ARIA landmark compliance */}
-        <div className="sticky top-0 z-10 bg-card border-b">
-          <div className="mx-auto max-w-7xl px-6">
-            <TabsList className="bg-transparent gap-1 h-auto p-0">
-              {TAB_IDS.map((id) => (
-                <TabsTrigger
-                  key={id}
-                  value={id}
-                  className={cn(
-                    "rounded-none border-b-2 border-transparent py-3",
-                    "data-[state=active]:border-primary data-[state=active]:text-primary",
-                    "data-[state=active]:bg-transparent data-[state=active]:shadow-none"
-                  )}
-                >
-                  {TAB_LABELS[id]}
-                </TabsTrigger>
-              ))}
-            </TabsList>
+      <div className="flex min-w-0 flex-1 flex-col">
+        <SiteHeader
+          snapshot={activeSnapshot}
+          leadPct={leadPct}
+          setLeadPct={setLeadPct}
+          onJump={jumpToTab}
+          optimizations={optimizations}
+          sidebarToggle={
+            <SidebarToggle open={sidebarOpen} onOpenChange={setSidebarOpen} />
+          }
+        />
+
+        <main className="mx-auto w-full max-w-7xl flex-1 px-4 py-6 sm:px-6">
+          <div className="min-h-[60vh] rounded-2xl surface-inset p-6">
+            {renderTabContent()}
           </div>
-        </div>
-
-        {/* Conditional rendering of tab panels reduces layout/rendering overhead */}
-        <main className="mx-auto max-w-7xl px-6 py-6">
-          {tab === "coverage" && <CoverageTab snapshot={activeSnapshot} leadPct={leadPct} />}
-          {tab === "validation" && <ValidationTab snapshot={activeSnapshot} leadPct={leadPct} />}
-          {tab === "raci" && <RaciTab />}
-          {tab === "supervisor" && <SupervisorTab snapshot={activeSnapshot} leadPct={leadPct} />}
-          {tab === "pods" && <PodsTab snapshot={activeSnapshot} />}
-          {tab === "shifts" && <ShiftsTab snapshot={activeSnapshot} />}
-          {tab === "cubicles" && <CubiclesTab snapshot={activeSnapshot} />}
-          {tab === "roster" && <RosterTab snapshot={activeSnapshot} />}
-          {tab === "optimizer" && (
-            <OptimizerTab snapshot={activeSnapshot} onUpdateSnapshot={setActiveSnapshot} optimizations={optimizations} />
-          )}
         </main>
-      </Tabs>
 
-      <footer className="border-t bg-card mt-12">
-        <div className="mx-auto max-w-7xl px-6 py-4 text-xs text-muted-foreground flex items-center justify-between">
-          <span>MJM ParaTransit · Schedule Review · 24/7 staffing</span>
-          <span className="num">
-            source: {activeSnapshot.meta.source}
-          </span>
-        </div>
-      </footer>
+        <AgentProfilePanel snapshot={activeSnapshot} onJump={jumpToTab} />
+        <TeamProfilePanel snapshot={activeSnapshot} onJump={jumpToTab} />
+
+        <footer className="mt-auto border-t surface-panel">
+          <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-4 text-xs text-muted-foreground sm:px-6">
+            <span>
+              {/* TODO: Safely derive stats (e.g. activeSnapshot.agents.length) instead of hardcoding text */}
+              MJM Brokerage Scheduling Application · 53 roster · 6 Supervisor · 6 teams · 24/7 staffing
+            </span>
+            <span className="font-mono text-[11px]">
+              source: {activeSnapshot.meta.source}
+            </span>
+          </div>
+        </footer>
+      </div>
     </div>
   );
 }

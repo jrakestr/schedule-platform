@@ -1,5 +1,6 @@
 import { cacheLife, cacheTag } from "next/cache";
 import { createReadClient } from "@/lib/supabase/server";
+import { normalizeSnapshotPods } from "@/lib/data/normalize-snapshot";
 import type { Snapshot } from "@/lib/data/types";
 
 export const SNAPSHOT_TAG = "platform-snapshot";
@@ -66,22 +67,26 @@ async function readOptimizationFromSupabase(optId: string): Promise<SnapshotReco
 // first-time deploys can complete and the publish-platform job can seed
 // Supabase afterwards. On the deployed Vercel runtime, NEXT_PUBLIC_SUPABASE_URL
 // + SUPABASE_SERVICE_ROLE_KEY will be set and Supabase wins by precedence.
+function snapshotHasAbandonVolume(payload: Snapshot): boolean {
+  const byDay = payload.volume?.abandoned_per_interval?.Combined;
+  if (!byDay) return false;
+  return Object.values(byDay).some((intervals) =>
+    intervals.some((value) => value > 0),
+  );
+}
+
 async function readFromLocalFile(): Promise<SnapshotRecord | null> {
   try {
     const fs = await import("node:fs/promises");
     const path = await import("node:path");
     const candidates = [
+      path.resolve(process.cwd(), "data", "platform-snapshot.json"),
       path.resolve(
         process.cwd(),
         "..",
         "output",
         "schedule-review-platform",
         "data.json",
-      ),
-      path.resolve(
-        process.cwd(),
-        "data",
-        "platform-snapshot.json",
       ),
     ];
     for (const candidate of candidates) {
@@ -109,8 +114,11 @@ async function loadSnapshotRecord(optId?: string): Promise<SnapshotRecord> {
   }
 
   const fromDb = await readFromSupabase();
-  if (fromDb) return fromDb;
   const fromFile = await readFromLocalFile();
+
+  if (fromDb && snapshotHasAbandonVolume(fromDb.payload)) return fromDb;
+  if (fromFile && snapshotHasAbandonVolume(fromFile.payload)) return fromFile;
+  if (fromDb) return fromDb;
   if (fromFile) return fromFile;
   throw new Error(
     "No snapshot available. In production set NEXT_PUBLIC_SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY and run `make publish-platform`. In dev, place data.json at ../output/schedule-review-platform/data.json.",
@@ -119,7 +127,7 @@ async function loadSnapshotRecord(optId?: string): Promise<SnapshotRecord> {
 
 export async function getLatestSnapshot(optId?: string): Promise<Snapshot> {
   const record = await loadSnapshotRecord(optId);
-  return record.payload;
+  return normalizeSnapshotPods(record.payload);
 }
 
 export async function getSnapshotTakenAt(optId?: string): Promise<string | null> {

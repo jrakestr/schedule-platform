@@ -12,6 +12,7 @@ import { TAB_IDS, TAB_LABELS, type TabId } from "@/components/tab-ids";
 
 interface KeyboardShortcutsProps {
   onJump: (tab: TabId) => void;
+  section?: "call-center" | "drivers";
 }
 
 // Helper extracted outside component to prevent redeclaration and allow testing
@@ -28,15 +29,21 @@ const getModifierKey = (): string => {
   return /(Mac|iPhone|iPad|iPod)/i.test(navigator.platform) ? "⌘" : "Ctrl";
 };
 
-export function KeyboardShortcuts({ onJump }: KeyboardShortcutsProps) {
+export function KeyboardShortcuts({
+  onJump,
+  section = "call-center",
+}: KeyboardShortcutsProps) {
   const [helpOpen, setHelpOpen] = useState(false);
   const [modifierKey, setModifierKey] = useState("Ctrl");
 
-  // Keep a mutable ref to the callback to prevent effect re-binding
   const onJumpRef = useRef(onJump);
+  const sectionRef = useRef(section);
   useEffect(() => {
     onJumpRef.current = onJump;
   }, [onJump]);
+  useEffect(() => {
+    sectionRef.current = section;
+  }, [section]);
 
   // Set the modifier key client-side only to prevent hydration mismatches
   useEffect(() => {
@@ -56,8 +63,8 @@ export function KeyboardShortcuts({ onJump }: KeyboardShortcutsProps) {
         return;
       }
 
-      // Handle numerical tab jumping safely
-      if (/^[1-9]$/.test(e.key)) {
+      // Handle numerical tab jumping safely (call center views only)
+      if (/^[1-9]$/.test(e.key) && sectionRef.current === "call-center") {
         const index = parseInt(e.key, 10) - 1;
         if (index < TAB_IDS.length) {
           e.preventDefault();

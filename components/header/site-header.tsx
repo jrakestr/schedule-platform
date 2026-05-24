@@ -101,18 +101,6 @@ export function SiteHeader({
 
   return (
     <header className="border-b relative overflow-hidden surface-panel">
-        <div
-          className="absolute inset-0 dot-grid pointer-events-none select-none opacity-40 dark:opacity-25"
-          aria-hidden
-        />
-        <div
-          className="absolute inset-0 pointer-events-none select-none"
-          style={{
-            background:
-              "linear-gradient(105deg, hsl(var(--surface-wash) / 0.9) 0%, transparent 50%, hsl(var(--primary) / 0.03) 100%)",
-          }}
-          aria-hidden
-        />
         <div className="relative z-10 mx-auto flex max-w-7xl flex-wrap items-start justify-between gap-6 px-4 py-5 sm:px-6">
           <div className="flex min-w-[280px] flex-1 items-start gap-3">
             {sidebarToggle}

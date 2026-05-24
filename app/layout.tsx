@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { IBM_Plex_Mono, Inter } from "next/font/google";
+import { Analytics } from "@vercel/analytics/next";
 import { NuqsAdapter } from "nuqs/adapters/next/app";
 import { ThemeProvider } from "@/components/theme-provider";
 import "./globals.css";
@@ -43,6 +44,7 @@ export default function RootLayout({
         >
           <NuqsAdapter>{children}</NuqsAdapter>
         </ThemeProvider>
+        <Analytics />
       </body>
     </html>
   );

@@ -24,6 +24,7 @@ import {
   teamRoleParam,
 } from "@/lib/navigation/panel-params";
 import { podNamesOrdered } from "@/lib/compute/week-schedule";
+import { resolveCanonicalPodName } from "@/lib/data/normalize-snapshot";
 import type { Agent, Snapshot } from "@/lib/data/types";
 import { cn } from "@/lib/utils";
 import type { TabId } from "@/components/tab-ids";
@@ -41,9 +42,10 @@ export function TeamProfilePanel({ snapshot, onJump }: TeamProfilePanelProps) {
 
   const podEntry = useMemo(() => {
     if (!teamName) return null;
-    const pod = snapshot.pods[teamName];
+    const canonical = resolveCanonicalPodName(teamName);
+    const pod = snapshot.pods[canonical];
     if (!pod) return null;
-    return { name: teamName, pod };
+    return { name: canonical, pod };
   }, [teamName, snapshot.pods]);
 
   const members = useMemo((): Agent[] => {

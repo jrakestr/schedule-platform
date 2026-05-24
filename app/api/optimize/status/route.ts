@@ -1,4 +1,5 @@
 import { connection, NextRequest, NextResponse } from "next/server";
+import { normalizeSnapshotPods } from "@/lib/data/normalize-snapshot";
 import { createWriteClient } from "@/lib/supabase/server";
 
 export async function GET(request: NextRequest) {
@@ -30,6 +31,8 @@ export async function GET(request: NextRequest) {
     const run = { ...data[0] };
     if (!includePayload) {
       delete run.payload;
+    } else if (run.payload) {
+      run.payload = normalizeSnapshotPods(run.payload);
     }
 
     return NextResponse.json({

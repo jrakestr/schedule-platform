@@ -15,7 +15,6 @@ import { ProfileSlideOver } from "@/components/shared/profile-slide-over";
 import { TeamLink } from "@/components/team/team-link";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { TooltipProvider } from "@/components/ui/tooltip";
 import {
   agentOperationalRole,
   roleBadgeClass,
@@ -98,8 +97,7 @@ export function AgentProfilePanel({ snapshot, onJump }: AgentProfilePanelProps) 
   const displayName = agentDisplayName(agent);
 
   return (
-    <TooltipProvider>
-      <ProfileSlideOver
+    <ProfileSlideOver
         open={open}
         onClose={close}
         accentColor={accent}
@@ -230,6 +228,5 @@ export function AgentProfilePanel({ snapshot, onJump }: AgentProfilePanelProps) 
           )}
         </div>
       </ProfileSlideOver>
-    </TooltipProvider>
   );
 }

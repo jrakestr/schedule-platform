@@ -2,6 +2,10 @@
 
 import { DOW_LIST, type Agent } from "@/lib/data/types";
 import { shiftColor } from "@/lib/compute/colors";
+import {
+  resolveAgentDayCell,
+  weekStripHeaderClock,
+} from "@/lib/compute/week-schedule";
 import { cn } from "@/lib/utils";
 
 interface WeekStripProps {
@@ -11,8 +15,8 @@ interface WeekStripProps {
 
 /** Mon–Sun at-a-glance with shift template merged into one visual block. */
 export function WeekStrip({ agent, className }: WeekStripProps) {
-  const works = new Set(agent.works_days ?? []);
   const dotColor = shiftColor(agent.shift_id);
+  const headerClock = weekStripHeaderClock(agent);
 
   return (
     <div
@@ -31,7 +35,7 @@ export function WeekStrip({ agent, className }: WeekStripProps) {
             {agent.shift_id}
           </span>
           <span className="hidden truncate text-[11px] text-muted-foreground sm:inline num">
-            {agent.start_clock}–{agent.end_clock}
+            {headerClock}
           </span>
         </div>
         <div className="flex shrink-0 items-center gap-2 text-[10px] text-muted-foreground">
@@ -50,7 +54,8 @@ export function WeekStrip({ agent, className }: WeekStripProps) {
 
       <div className="grid w-full min-w-0 grid-cols-7 divide-x divide-border/40">
         {DOW_LIST.map((d) => {
-          const on = works.has(d);
+          const cell = resolveAgentDayCell(agent, d);
+          const on = cell.kind === "shift";
           return (
             <div
               key={d}
@@ -69,10 +74,10 @@ export function WeekStrip({ agent, className }: WeekStripProps) {
                     style={{ background: dotColor }}
                   />
                   <div className="num mt-2 text-[10px] font-medium tabular-nums leading-tight text-foreground">
-                    {agent.start_clock}
+                    {cell.startClock}
                   </div>
                   <div className="num text-[10px] tabular-nums text-muted-foreground">
-                    {agent.end_clock}
+                    {cell.endClock}
                   </div>
                 </>
               ) : (

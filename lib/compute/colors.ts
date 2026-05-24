@@ -177,11 +177,63 @@ export function cellTone(value: number, max: number): string {
   return "bg-indigo-50 text-indigo-800 dark:bg-indigo-950 dark:text-indigo-200";
 }
 
-// Cubicle occupancy color ramp (0-100% of cap). Single hue family, three
-// thresholds so people know when they're approaching capacity.
-export function cubicleColor(pct: number): string {
-  if (pct >= 0.95) return "bg-rose-200 text-rose-900 dark:bg-rose-950 dark:text-rose-100";
-  if (pct >= 0.8) return "bg-amber-200 text-amber-900 dark:bg-amber-950 dark:text-amber-100";
-  if (pct > 0) return "bg-emerald-100 text-emerald-900 dark:bg-emerald-950 dark:text-emerald-100";
-  return "bg-slate-50 text-slate-400 dark:bg-slate-900 dark:text-slate-600";
+/** Share of physical cubicle cap (34 seats) at which cells turn red. */
+export const CUBICLE_NEAR_CAP_THRESHOLD = 0.85;
+
+export function cubicleOccupancyRatio(value: number, cap: number): number {
+  if (!value || !cap) return 0;
+  return value / cap;
 }
+
+/** Heatmap cell classes — green (low) → amber (mid) → red (near cap). */
+export function cubicleColor(value: number, cap: number): string {
+  if (!value) {
+    return "bg-slate-50 text-slate-300 dark:bg-slate-900 dark:text-slate-700";
+  }
+  const ratio = cubicleOccupancyRatio(value, cap);
+  if (ratio >= CUBICLE_NEAR_CAP_THRESHOLD) {
+    return "bg-red-600 text-white font-semibold";
+  }
+  if (ratio >= 0.75) {
+    return "bg-amber-500 text-white font-semibold";
+  }
+  if (ratio >= 0.5) {
+    return "bg-amber-200 text-amber-950 dark:bg-amber-900 dark:text-amber-100";
+  }
+  if (ratio >= 0.25) {
+    return "bg-emerald-200 text-emerald-900 dark:bg-emerald-900 dark:text-emerald-100";
+  }
+  return "bg-emerald-50 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-200";
+}
+
+/** Background-only ramp for mini occupancy bars. */
+export function cubicleBarColor(value: number, cap: number): string {
+  if (!value) return "bg-slate-200 dark:bg-slate-800";
+  const ratio = cubicleOccupancyRatio(value, cap);
+  if (ratio >= CUBICLE_NEAR_CAP_THRESHOLD) return "bg-red-600";
+  if (ratio >= 0.75) return "bg-amber-500";
+  if (ratio >= 0.5) return "bg-amber-300 dark:bg-amber-600";
+  if (ratio >= 0.25) return "bg-emerald-400 dark:bg-emerald-600";
+  return "bg-emerald-200 dark:bg-emerald-800";
+}
+
+/** Stat tile value tone keyed to occupancy vs cap. */
+export function cubicleStatTone(value: number, cap: number): string {
+  const ratio = cubicleOccupancyRatio(value, cap);
+  if (ratio >= CUBICLE_NEAR_CAP_THRESHOLD) {
+    return "text-red-700 dark:text-red-400";
+  }
+  if (ratio >= 0.75) {
+    return "text-amber-700 dark:text-amber-400";
+  }
+  return "text-emerald-700 dark:text-emerald-400";
+}
+
+export const CUBICLE_LEGEND_STEPS = [
+  { className: "bg-slate-50 border border-border dark:bg-slate-900", label: "0 (Empty)" },
+  { className: "bg-emerald-50 dark:bg-emerald-950", label: "< 25% (Light)" },
+  { className: "bg-emerald-200 dark:bg-emerald-900", label: "25% – 50%" },
+  { className: "bg-amber-200 dark:bg-amber-900", label: "50% – 75%" },
+  { className: "bg-amber-500", label: "75% – 85%" },
+  { className: "bg-red-600", label: "≥ 85% (Near Cap)" },
+] as const;

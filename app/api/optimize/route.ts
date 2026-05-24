@@ -1,11 +1,11 @@
-import { NextResponse, after } from "next/server";
+import { NextResponse, after, connection } from "next/server";
 import { createWriteClient } from "@/lib/supabase/server";
 import { execFile } from "node:child_process";
 import { existsSync } from "node:fs";
 import { writeFile } from "node:fs/promises";
 import { promisify } from "node:util";
 import path from "node:path";
-import { optimizerConstraintsSchema } from "@/lib/data/schemas";
+import { optimizerConstraintsSchema, type WorkLimitations } from "@/lib/data/schemas";
 
 const execFilePromise = promisify(execFile);
 
@@ -20,6 +20,7 @@ type RunStatus = "pending" | "running" | "succeeded" | "failed";
 type RunConstraints = {
   shifts: Record<string, { enabled: boolean; maxCount: number }>;
   cubicleCap: number;
+  workLimitations?: WorkLimitations;
 };
 
 type ApiError = {
@@ -313,6 +314,8 @@ async function runOptimizationInBackground(runId: string, constraints: RunConstr
 }
 
 export async function POST(request: Request) {
+  await connection();
+
   try {
     const body = await request.json().catch(() => null);
 
@@ -330,7 +333,7 @@ export async function POST(request: Request) {
       );
     }
 
-    const { name, notes, shifts, cubicleCap } = validation.data;
+    const { name, notes, shifts, cubicleCap, workLimitations } = validation.data;
 
     debugLog(
       "route.ts:POST",
@@ -349,7 +352,11 @@ export async function POST(request: Request) {
     const { data: insertedRunId, error: insertError } = await supabase.rpc("insert_optimization", {
       run_name: name,
       notes: notes ?? "",
-      constraints: { shifts, cubicleCap: cubicleCap ?? DEFAULT_CUBICLE_CAP },
+      constraints: {
+        shifts,
+        cubicleCap: cubicleCap ?? DEFAULT_CUBICLE_CAP,
+        ...(workLimitations ? { workLimitations } : {}),
+      },
     });
 
     if (insertError) {
@@ -392,6 +399,7 @@ export async function POST(request: Request) {
         await runOptimizationInBackground(runId, {
           shifts,
           cubicleCap: cubicleCap ?? DEFAULT_CUBICLE_CAP,
+          ...(workLimitations ? { workLimitations } : {}),
         });
       } catch (error: unknown) {
         logEvent("optimization.background_fatal", {

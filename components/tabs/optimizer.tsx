@@ -18,16 +18,25 @@ import {
   X,
 } from "lucide-react";
 import { SectionCard } from "@/components/shared/section-card";
+import { LabelWithHelp } from "@/components/shared/metric-help";
 import { StatTile } from "@/components/charts/stat-tile";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import type { Snapshot, Agent, DOW } from "@/lib/data/types";
+import { WFM_ERLANG_REQUIRED, WFM_OPTIMIZER_OBJECTIVE } from "@/lib/copy/wfm-tooltips";
+import type { Snapshot } from "@/lib/data/types";
 import type { OptimizationMeta } from "@/lib/data/snapshot";
 import { useQueryState } from "nuqs";
 import { useRouter } from "next/navigation";
 import { launchOptimization, OptimizerLaunchError, deleteOptimizationRun } from "@/lib/api/optimizer";
+import { computeScenarioMetrics } from "@/lib/compute/optimization-metrics";
+import { OptimizationResults } from "@/components/optimizer/optimization-results";
+import {
+  WorkLimitationsPanel,
+  DEFAULT_WORK_LIMITATIONS,
+} from "@/components/optimizer/work-limitations-panel";
+import type { WorkLimitations } from "@/lib/data/schemas";
 
 type RunState = "idle" | "launching" | "polling" | "succeeded" | "failed";
 
@@ -81,6 +90,7 @@ export function OptimizerStatusBanner({ state, errorCode, errorMessage, onRetry 
 
 interface OptimizerTabProps {
   snapshot: Snapshot;
+  baselineSnapshot: Snapshot;
   onUpdateSnapshot: (newSnapshot: Snapshot) => void;
   optimizations: OptimizationMeta[];
 }
@@ -249,7 +259,7 @@ const ShiftCard = memo(function ShiftCard({
   );
 });
 
-export function OptimizerTab({ snapshot, onUpdateSnapshot, optimizations }: OptimizerTabProps) {
+export function OptimizerTab({ snapshot, baselineSnapshot, onUpdateSnapshot, optimizations }: OptimizerTabProps) {
   const [isSolving, setIsSolving] = useState(false);
   const [errorDetails, setErrorDetails] = useState<string | null>(null);
   const [runName, setRunName] = useState("");
@@ -307,6 +317,9 @@ export function OptimizerTab({ snapshot, onUpdateSnapshot, optimizations }: Opti
   const cubicleCap = snapshot?.meta?.cubicle_cap ?? snapshot?.cubicles?.cap ?? 34;
 
   const [customCubicleCap, setCustomCubicleCap] = useState(cubicleCap);
+  const [workLimitations, setWorkLimitations] = useState<WorkLimitations>(
+    DEFAULT_WORK_LIMITATIONS,
+  );
 
   useEffect(() => {
     setCustomCubicleCap(cubicleCap);
@@ -320,6 +333,7 @@ export function OptimizerTab({ snapshot, onUpdateSnapshot, optimizations }: Opti
   const [commentText, setCommentComment] = useState("");
   const [comments, setComments] = useState<{ name: string; text: string; date: string }[]>([]);
 
+  // Safe SSR LocalStorage synchronization
   useEffect(() => {
     try {
       const raw = localStorage.getItem(`schedule-platform.feedback-${optId || "default"}`);
@@ -447,6 +461,7 @@ export function OptimizerTab({ snapshot, onUpdateSnapshot, optimizations }: Opti
 
   const [runState, setRunState] = useState<RunState>("idle");
   const [errorCode, setErrorCode] = useState<string | undefined>(undefined);
+  const [completedRunId, setCompletedRunId] = useState<string | null>(null);
   const isPollingRef = useRef(false);
 
   useEffect(() => {
@@ -479,6 +494,7 @@ export function OptimizerTab({ snapshot, onUpdateSnapshot, optimizations }: Opti
       name: trimmedName,
       notes: notes.trim() || null,
       cubicleCap: toSafeCubicleCap(customCubicleCap),
+      workLimitations,
       shifts: {
         sixHour: {
           enabled: shifts.sixHour.enabled,
@@ -509,7 +525,6 @@ export function OptimizerTab({ snapshot, onUpdateSnapshot, optimizations }: Opti
       setRunState("polling");
       setSolvingStatus("Optimization is running. Checking for results...");
 
-      // Start exponential backoff status polling
       let pollAttempts = 0;
       const maxPollAttempts = 40;
 
@@ -531,11 +546,10 @@ export function OptimizerTab({ snapshot, onUpdateSnapshot, optimizations }: Opti
           if (run.status === "succeeded") {
             setRunState("succeeded");
             setSolvingStatus("Complete. Loading roster overlay...");
+            setCompletedRunId(runId);
             setRunName("");
             setNotes("");
-            // Set opt_id in URL to switch roster view
             await setOptId(runId);
-            // Refresh the page data so the optimizations list updates
             router.refresh();
             setIsSolving(false);
           } else if (run.status === "failed") {
@@ -544,7 +558,6 @@ export function OptimizerTab({ snapshot, onUpdateSnapshot, optimizations }: Opti
             setErrorDetails(run.error_details || "Optimization failed.");
             setIsSolving(false);
           } else {
-            // Keep polling with exponential backoff delay (3s -> 10s cap)
             pollAttempts++;
             if (pollAttempts >= maxPollAttempts) {
               setRunState("failed");
@@ -609,6 +622,18 @@ export function OptimizerTab({ snapshot, onUpdateSnapshot, optimizations }: Opti
     }
   };
 
+  // Safe memoization: Serialize relevant properties so optimizations array reference doesn't trigger recalc
+  const memoizedOptsKey = optimizations.map(o => `${o.id}-${o.status}`).join(",");
+  const activeOptimization = useMemo(
+    () =>
+      optId
+        ? optimizations.find((opt) => opt.id === optId && opt.status === "succeeded") ?? null
+        : null,
+    [optId, memoizedOptsKey],
+  );
+
+  const leadPct = snapshot.meta.lead_on_work_default;
+
   return (
     <div className="space-y-6">
       <OptimizerStatusBanner
@@ -621,6 +646,17 @@ export function OptimizerTab({ snapshot, onUpdateSnapshot, optimizations }: Opti
           setErrorCode(undefined);
         }}
       />
+
+      {activeOptimization && (
+        <OptimizationResults
+          runName={activeOptimization.run_name}
+          baseline={baselineSnapshot}
+          proposed={snapshot}
+          leadPct={leadPct}
+          showSuccessBanner={completedRunId === activeOptimization.id}
+          onDismissSuccess={() => setCompletedRunId(null)}
+        />
+      )}
 
       <SectionCard
         title="Simple Optimizer Configurator"
@@ -695,7 +731,28 @@ export function OptimizerTab({ snapshot, onUpdateSnapshot, optimizations }: Opti
         </div>
 
         <aside className="space-y-5">
-          <SectionCard title="Optimization Sandbox">
+          <WorkLimitationsPanel
+            value={workLimitations}
+            onChange={setWorkLimitations}
+            disabled={isSolving || isViewer}
+          />
+
+          <SectionCard
+            title={
+              <LabelWithHelp
+                label="Optimization Sandbox"
+                help={
+                  <>
+                    <p>{WFM_OPTIMIZER_OBJECTIVE}</p>
+                    <p className="mt-1.5">{WFM_ERLANG_REQUIRED}</p>
+                    <p className="mt-1.5">
+                      Interval weights use offered × AHT from output/erlang_staffing_by_interval.csv (RideChoice + ADA + ETA). No per-agent call totals are assigned.
+                    </p>
+                  </>
+                }
+              />
+            }
+          >
             <div className="space-y-4 text-sm text-muted-foreground leading-relaxed">
               <p>
                 Set limits for each shift type, enter a run name, add optional notes, and click Run to rebuild the weekly roster.
@@ -707,6 +764,7 @@ export function OptimizerTab({ snapshot, onUpdateSnapshot, optimizations }: Opti
                     <label htmlFor="cubicle-cap-slider">Workspace Cubicle Cap</label>
                     <span className="num font-mono text-[11px] bg-muted px-1.5 py-0.5 rounded text-muted-foreground">{customCubicleCap} seats</span>
                   </div>
+                  {/* Performance Fix: Update state layout smoothly via standard UI props */}
                   <Slider
                     id="cubicle-cap-slider"
                     min={10}
@@ -762,7 +820,6 @@ export function OptimizerTab({ snapshot, onUpdateSnapshot, optimizations }: Opti
 
               <div className="border-t border-border my-4" />
 
-              {/* Infeasibility alert */}
               {infeasibilityDetails.isBlocked && (
                 <div className="border-2 border-red-500/80 bg-red-500/10 text-red-950 dark:text-red-200 p-4 rounded-md space-y-3">
                   <div className="flex items-center gap-1.5 text-red-600 dark:text-red-400 font-bold text-xs">
@@ -826,8 +883,6 @@ export function OptimizerTab({ snapshot, onUpdateSnapshot, optimizations }: Opti
                 </div>
               )}
 
-              {/* We no longer render simple unformatted errorDetails below, because they are elegantly surfaced in our status banner above */}
-
               <Button
                 variant="default"
                 onClick={handleRunOptimization}
@@ -851,7 +906,6 @@ export function OptimizerTab({ snapshot, onUpdateSnapshot, optimizations }: Opti
                   </>
                 )}
               </Button>
-
               {/* Collaborative commentary comment box */}
               {isViewer && (
                 <div className="border border-border bg-card rounded-md p-4 space-y-3 mt-4">
@@ -1042,7 +1096,7 @@ export function OptimizerTab({ snapshot, onUpdateSnapshot, optimizations }: Opti
               const payload = scenarioPayloads[id];
               const isLoading = loadingPayloads[id];
               
-              const metrics = calculateScenarioMetrics(payload);
+              const metrics = payload ? computeScenarioMetrics(payload, leadPct) : null;
 
               return (
                 <Card key={id} className="relative overflow-hidden border border-border shadow-sm">
@@ -1087,7 +1141,7 @@ export function OptimizerTab({ snapshot, onUpdateSnapshot, optimizations }: Opti
                             Coverage Accuracy
                           </span>
                           <span className="num font-bold text-foreground">
-                            {(metrics.volumeMatchedShare * 100).toFixed(1)}%
+                            {metrics.weightedCoveragePct.toFixed(1)}%
                           </span>
                         </div>
                         <div className="flex justify-between items-center border-b pb-1.5 border-border">
@@ -1132,146 +1186,4 @@ export function OptimizerTab({ snapshot, onUpdateSnapshot, optimizations }: Opti
       )}
     </div>
   );
-}
-
-function calculateScenarioMetrics(snapshotPayload: Snapshot | null | undefined) {
-  if (!snapshotPayload) return null;
-  
-  let totalCost = 0;
-  let twelveHourCount = 0;
-  let splitShiftCount = 0;
-  let peakCubicles = 0;
-
-  // 1. Calculate Estimated Weekly Cost
-  const agents = snapshotPayload.agents || [];
-  for (const agent of agents) {
-    let rate = 18; // Default CSA Line
-    if (agent.role === "Supervisor") rate = 28;
-    else if (agent.role === "CSA" && agent.position === "Lead") rate = 22;
-    else if (agent.role === "SDS") {
-      rate = agent.position === "Lead" ? 24 : 20;
-    } else if (agent.role === "NDS") {
-      rate = 20;
-    }
-
-    const hoursPerWeek = Number(agent.effective_hours_per_week || (agent.gross_hours ? (agent.gross_hours || 8) * 5 : 40));
-    let agentWeeklyCost = hoursPerWeek * rate;
-
-    // Check split incentive eligibility
-    const v = agent.shift_id || "";
-    const isTwelveHour = v.startsWith("SUPER12") || v.includes("SUPER12");
-    const isSplit = v.startsWith("SPLIT") || v.includes("SPLIT");
-    if (isTwelveHour) {
-      twelveHourCount++;
-    }
-    if (isSplit) {
-      splitShiftCount++;
-      agentWeeklyCost += 100; // $20/day * 5 days = $100 weekly bonus
-    }
-
-    totalCost += agentWeeklyCost;
-  }
-
-  // 2. Volume matched share
-  let matchedShare = 0;
-  try {
-    const DOW_LIST: DOW[] = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
-    const offered: Record<string, number[]> = {};
-    const staffed: Record<string, number[]> = {};
-    let totalVol = 0;
-    let totalStaff = 0;
-    
-    for (const d of DOW_LIST) {
-      offered[d] = snapshotPayload.volume?.offered_per_interval?.Combined?.[d] || new Array(48).fill(0);
-      
-      const csaAgents = agents.filter(a => a.role === "CSA");
-      const daySupply = new Array(48).fill(0);
-      for (const a of csaAgents) {
-        const works = a.works_days || [];
-        if (!works.includes(d as any)) continue;
-        
-        const weight = a.position === "Lead" ? 0.6 : 1.0;
-        const parsedSegs = a.structure ? a.structure.split("|") : [];
-        const perIntervalMinutes = new Array(48).fill(0);
-        let prevEnd: number | null = null;
-        for (const part of parsedSegs) {
-          const s = part.trim();
-          if (!s) continue;
-          const spaceIdx = s.lastIndexOf(" ");
-          if (spaceIdx === -1) continue;
-          const range = s.slice(0, spaceIdx).trim();
-          const kind = s.slice(spaceIdx + 1).trim();
-          const [rangeA, rangeB] = range.split("-");
-          if (!rangeA || !rangeB) continue;
-          
-          const toMin = (t: string): number => {
-            const [h, m] = t.split(":").map(Number);
-            return h * 60 + m;
-          };
-          let start = toMin(rangeA);
-          let end = toMin(rangeB);
-          if (prevEnd !== null) {
-            while (start < prevEnd) {
-              start += 1440;
-              end += 1440;
-            }
-          }
-          if (end <= start) end += 1440;
-          prevEnd = end;
-
-          if (kind === "Voice") {
-            for (let minute = start; minute < end; minute++) {
-              perIntervalMinutes[Math.floor((minute % 1440) / 30)] += 1;
-            }
-          }
-        }
-        for (let i = 0; i < 48; i++) {
-          if (perIntervalMinutes[i] >= 15) {
-            daySupply[i] += weight;
-          }
-        }
-      }
-      staffed[d] = daySupply;
-
-      for (let i = 0; i < 48; i++) {
-        totalVol += offered[d][i] ?? 0;
-        totalStaff += staffed[d][i] ?? 0;
-      }
-    }
-
-    if (totalVol > 0 && totalStaff > 0) {
-      for (const d of DOW_LIST) {
-        for (let i = 0; i < 48; i++) {
-          matchedShare += Math.min(
-            (offered[d][i] ?? 0) / totalVol,
-            (staffed[d][i] ?? 0) / totalStaff
-          );
-        }
-      }
-    }
-  } catch (err) {
-    console.error("Failed to calculate matched share in comparison:", err);
-  }
-
-  // 3. Peak Cubicles
-  try {
-    const DOW_SHORT: DOW[] = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
-    const occ = snapshotPayload.cubicles?.occupancy_by_day_hour || {};
-    for (const d of DOW_SHORT) {
-      const dayOcc = occ[d] || [];
-      for (const hVal of dayOcc) {
-        if (hVal > peakCubicles) peakCubicles = hVal;
-      }
-    }
-  } catch {
-    // ignore
-  }
-
-  return {
-    totalCost,
-    volumeMatchedShare: matchedShare,
-    twelveHourCount,
-    splitShiftCount,
-    peakCubicles,
-  };
 }

@@ -125,13 +125,18 @@ export interface Pod {
 
 export interface VolumeWeekly {
   offered: number;
+  abandoned?: number;
+  abandon_rate?: number;
   required_agent_intervals?: number;
   mean_aht_seconds?: number;
 }
 
 export interface Volume {
   offered_per_interval: Record<FunctionName, Record<DOW, number[]>>;
+  /** Non-blank agent_name = answered; blank = abandoned. Flow metric — sum across intervals. */
+  abandoned_per_interval?: Record<FunctionName, Record<DOW, number[]>>;
   required_on_phones: Record<FunctionName, Record<DOW, number[]>>;
+  /** Handled-call AHT (talk + wrap) per interval; average across intervals for hourly display. */
   aht_seconds: Record<FunctionName, Record<DOW, number[]>>;
   weekly: Record<FunctionName, VolumeWeekly>;
 }

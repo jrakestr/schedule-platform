@@ -21,7 +21,7 @@ const ibmPlexMono = IBM_Plex_Mono({
 export const metadata: Metadata = {
   title: "MJM Brokerage Scheduling Application",
   description:
-    "Brokerage scheduling for call center and driver operations. Coverage, validation, pods, shifts, cubicles, supervisor, roster, and optimizer — backed by the latest snapshot.",
+    "Brokerage scheduling for call center and driver operations. Coverage, validation, pods, shifts, cubicles, team matrix, roster, and optimizer — backed by the latest snapshot.",
   metadataBase: new URL(
     process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000",
   ),

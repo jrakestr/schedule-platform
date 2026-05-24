@@ -13,6 +13,7 @@ import {
 } from "@/components/ui/command";
 import { Button } from "@/components/ui/button";
 import type { Snapshot } from "@/lib/data/types";
+import { podNamesOrdered } from "@/lib/compute/week-schedule";
 import { TAB_IDS, TAB_LABELS, type TabId } from "@/components/tab-ids";
 
 interface CommandPaletteProps {
@@ -101,7 +102,7 @@ export function CommandPalette({ snapshot, onJump }: CommandPaletteProps) {
           </CommandGroup>
 
           <CommandGroup heading="Pods">
-            {Object.keys(snapshot.pods).map((name) => (
+            {podNamesOrdered(snapshot.pods).map((name) => (
               <CommandItem
                 key={name}
                 value={`pod ${name}`}

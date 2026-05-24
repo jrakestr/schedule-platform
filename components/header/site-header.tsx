@@ -23,7 +23,6 @@ import {
 import {
   Tooltip,
   TooltipContent,
-  TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 
@@ -101,8 +100,7 @@ export function SiteHeader({
   };
 
   return (
-    <TooltipProvider>
-      <header className="border-b relative overflow-hidden surface-panel">
+    <header className="border-b relative overflow-hidden surface-panel">
         <div
           className="absolute inset-0 dot-grid pointer-events-none select-none opacity-40 dark:opacity-25"
           aria-hidden
@@ -171,7 +169,7 @@ export function SiteHeader({
             <KpiTile
               label="Volume-matched share"
               tone={toneClass(matched)}
-              tip="Share of weekly call volume that lands in hours where staff is scheduled. Higher = better aligned distribution of the fixed roster."
+              tip="Share of weekly offered calls (call_segments_cleaned.csv forecast) that land in intervals where CSA Voice supply is scheduled. Shape metric — not Erlang service level."
               onClick={() => onJump("coverage")}
             >
               <AnimatedNumber
@@ -215,7 +213,6 @@ export function SiteHeader({
           </div>
         </div>
       </header>
-    </TooltipProvider>
   );
 }
 

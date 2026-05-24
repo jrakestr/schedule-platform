@@ -1,5 +1,25 @@
 import { z } from "zod";
 
+const durationHmSchema = z
+  .string()
+  .trim()
+  .regex(/^\d{1,2}:\d{2}$/, "Duration must use H:MM or HH:MM format");
+
+export const workLimitationsSchema = z.object({
+  maxWorkTime: durationHmSchema,
+  maxStretch: z.object({
+    enabled: z.boolean(),
+    time: durationHmSchema,
+  }),
+  breaks: z.object({
+    enabled: z.boolean(),
+    every: durationHmSchema,
+    length: durationHmSchema,
+  }),
+});
+
+export type WorkLimitations = z.infer<typeof workLimitationsSchema>;
+
 export const shiftConstraintSchema = z.object({
   enabled: z.boolean(),
   maxCount: z.number().int().nonnegative("Maximum count cannot be negative"),
@@ -20,6 +40,7 @@ export const optimizerConstraintsSchema = z.object({
     twelveHour: shiftConstraintSchema,
     splitShift: shiftConstraintSchema,
   }),
+  workLimitations: workLimitationsSchema.optional(),
 }); // Removed .strict() for pipeline resiliency
 
 export type ShiftConstraint = z.infer<typeof shiftConstraintSchema>;

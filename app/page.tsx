@@ -19,11 +19,18 @@ async function PlatformLoader({ searchParams }: { searchParams: Promise<{ opt_id
   const resolvedParams = await searchParams;
   const optId = resolvedParams.opt_id;
 
-  const [snapshot, optimizations] = await Promise.all([
+  const [snapshot, baselineSnapshot, optimizations] = await Promise.all([
     getLatestSnapshot(optId),
+    getLatestSnapshot(),
     listOptimizations(),
   ]);
-  return <PlatformShell snapshot={snapshot} optimizations={optimizations} />;
+  return (
+    <PlatformShell
+      snapshot={snapshot}
+      baselineSnapshot={baselineSnapshot}
+      optimizations={optimizations}
+    />
+  );
 }
 
 function PageSkeleton() {

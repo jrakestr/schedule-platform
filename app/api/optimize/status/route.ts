@@ -1,10 +1,11 @@
-import { NextResponse } from "next/server";
+import { connection, NextRequest, NextResponse } from "next/server";
 import { createWriteClient } from "@/lib/supabase/server";
 
-export async function GET(request: Request) {
+export async function GET(request: NextRequest) {
+  await connection();
+
   try {
-    const { searchParams } = new URL(request.url);
-    const id = searchParams.get("id");
+    const id = request.nextUrl.searchParams.get("id");
 
     if (!id) {
       return NextResponse.json(
@@ -13,7 +14,7 @@ export async function GET(request: Request) {
       );
     }
 
-    const includePayload = searchParams.get("include_payload") === "true";
+    const includePayload = request.nextUrl.searchParams.get("include_payload") === "true";
 
     const supabase = createWriteClient();
     const { data, error } = await supabase
@@ -29,13 +30,6 @@ export async function GET(request: Request) {
     const run = { ...data[0] };
     if (!includePayload) {
       delete run.payload;
-    }
-
-    if (error || !run) {
-      return NextResponse.json(
-        { ok: false, error: "Optimization run not found", details: error?.message },
-        { status: 404 }
-      );
     }
 
     return NextResponse.json({

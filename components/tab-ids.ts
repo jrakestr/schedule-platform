@@ -3,7 +3,7 @@ export const TAB_LABELS = {
   raci: "RACI Matrix",
   coverage: "Coverage",
   validation: "Validation",
-  supervisor: "Supervisor",
+  supervisor: "Team Matrix",
   pods: "Pods",
   shifts: "Shifts",
   cubicles: "Cubicles",

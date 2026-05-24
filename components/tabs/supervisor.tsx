@@ -1,13 +1,16 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { ArrowRight } from "lucide-react";
 import { AgentLink } from "@/components/agent/agent-link";
 import { TeamLink } from "@/components/team/team-link";
 import { SectionCard } from "@/components/shared/section-card";
 import { DayTabs } from "@/components/shared/day-tabs";
 import { StatTile } from "@/components/charts/stat-tile";
+import { SupervisorDutyTimeline } from "@/components/timeline/supervisor-duty-timeline";
 import { SupervisorGantt } from "@/components/timeline/supervisor-gantt";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import {
   Table,
   TableBody,
@@ -22,22 +25,24 @@ import {
   POD_ROLE_KEYS,
   agentPodRoleKey,
   cellTone,
-  shiftColor,
 } from "@/lib/compute/colors";
 import {
   csaVoiceMinutesGrid,
   supervisorsOnDuty,
 } from "@/lib/compute/supervisors";
+import { podNamesOrdered } from "@/lib/compute/week-schedule";
 import {
   DOW_LIST,
   type Agent,
   type DOW,
   type Snapshot,
 } from "@/lib/data/types";
+import type { TabId } from "@/components/tab-ids";
 
 interface SupervisorTabProps {
   snapshot: Snapshot;
   leadPct: number;
+  onJump?: (tab: TabId) => void;
 }
 
 const ROLE_KEYS = POD_ROLE_KEYS;
@@ -46,10 +51,13 @@ function roleKey(a: Agent) {
   return agentPodRoleKey(a);
 }
 
-export function SupervisorTab({ snapshot }: SupervisorTabProps) {
+type SupervisorView = "matrices" | "timeline" | "coverage";
+
+export function SupervisorTab({ snapshot, onJump }: SupervisorTabProps) {
   const [day, setDay] = useState<DOW>("Mon");
+  const [view, setView] = useState<SupervisorView>("matrices");
   const sched = snapshot.supervisor_schedule;
-  const podNames = useMemo(() => Object.keys(snapshot.pods), [snapshot.pods]);
+  const podNames = useMemo(() => podNamesOrdered(snapshot.pods), [snapshot.pods]);
 
   const matrices = useMemo(() => {
     const podHourly: Record<string, number[]> = {};
@@ -135,267 +143,379 @@ export function SupervisorTab({ snapshot }: SupervisorTabProps) {
     };
   }, [snapshot, day, podNames]);
 
-  const directReports = useMemo(() => {
-    const acc: Record<string, string[]> = {};
-    for (const [podName, pod] of Object.entries(snapshot.pods)) {
-      acc[pod.supervisor_id] = acc[pod.supervisor_id] ?? [];
-      acc[pod.supervisor_id].push(podName);
-    }
-    return acc;
-  }, [snapshot.pods]);
-
-  const supById = useMemo(
-    () =>
-      Object.fromEntries(sched.supervisors.map((s) => [s.id, s])) as Record<
-        string,
-        typeof sched.supervisors[number]
-      >,
-    [sched.supervisors],
-  );
-
   const csaGrid = useMemo(
     () => csaVoiceMinutesGrid(snapshot.agents),
     [snapshot.agents],
   );
 
+  const showDayPicker = view === "matrices" || view === "timeline";
+
   return (
-    <div className="space-y-5">
+    <div className="space-y-4">
+      <div className="num rounded-lg border border-border/60 bg-muted/15 px-4 py-2 text-sm tabular-nums">
+        {sched.supervisors.length} supervisors · {podNames.length} teams ·{" "}
+        {sched.min_coverage >= 1 ? "24/7 floor coverage" : "coverage gap detected"}
+      </div>
+
       <SectionCard
-        title="Cross-team coverage matrix"
+        title="Team Matrix"
         toolbar={
-          <div className="flex items-center gap-2 flex-wrap">
-            <Badge variant="secondary">
-              6 Supervisor · {podNames.length} teams · {snapshot.agents.length}{" "}
-              roster
-            </Badge>
-            <DayTabs day={day} onChange={setDay} />
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="flex rounded-md border border-border/60 p-0.5">
+              <Button
+                variant={view === "matrices" ? "default" : "ghost"}
+                size="sm"
+                className="h-7 text-xs"
+                onClick={() => setView("matrices")}
+              >
+                Matrices
+              </Button>
+              <Button
+                variant={view === "timeline" ? "default" : "ghost"}
+                size="sm"
+                className="h-7 text-xs"
+                onClick={() => setView("timeline")}
+              >
+                Timeline
+              </Button>
+              <Button
+                variant={view === "coverage" ? "default" : "ghost"}
+                size="sm"
+                className="h-7 text-xs"
+                onClick={() => setView("coverage")}
+              >
+                Coverage
+              </Button>
+            </div>
+            {showDayPicker && <DayTabs day={day} onChange={setDay} />}
+            {view === "coverage" && (
+              <Badge variant={sched.min_coverage >= 1 ? "success" : "destructive"}>
+                {sched.min_coverage >= 1 ? "Min coverage OK" : "Coverage gap"}
+              </Badge>
+            )}
           </div>
         }
       >
-        <div className="space-y-6">
-          <div>
-            <h3 className="font-semibold text-sm mb-2">
-              Team coverage timeline · {day}
-            </h3>
-            <SupervisorGantt
-              snapshot={snapshot}
-              day={day}
-              podNames={podNames}
-              callVolumeHour={matrices.callVolumeHour}
-              scheduledHour={matrices.colTotals}
-            />
-            <div className="flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-muted-foreground mt-2">
-              {Object.entries(SHIFT_COLOR).map(([k, c]) => (
-                <span key={k} className="inline-flex items-center gap-1">
-                  <span
-                    className="inline-block w-3 h-3 rounded-sm"
-                    style={{ background: c }}
-                  />
-                  {k}
-                </span>
-              ))}
-            </div>
-          </div>
+        {view === "matrices" && (
+          <MatricesView snapshot={snapshot} podNames={podNames} matrices={matrices} />
+        )}
+        {view === "timeline" && (
+          <TimelineView
+            snapshot={snapshot}
+            day={day}
+            podNames={podNames}
+            callVolumeHour={matrices.callVolumeHour}
+            scheduledHour={matrices.colTotals}
+          />
+        )}
+        {view === "coverage" && (
+          <CoverageView snapshot={snapshot} sched={sched} csaGrid={csaGrid} />
+        )}
+      </SectionCard>
 
-          <div>
-            <h3 className="font-semibold text-sm mb-2">
-              Team × Hour coverage
-            </h3>
-            <div className="overflow-x-auto">
-              <table className="text-xs border-separate border-spacing-0 min-w-full">
-                <thead>
-                  <tr>
-                    <th className="text-left p-2 sticky left-0 bg-card">Team</th>
-                    {snapshot.meta.hours.map((h) => (
-                      <th
-                        key={h}
-                        className="p-2 text-center text-[10px] text-muted-foreground font-mono"
-                      >
-                        {h}
-                      </th>
-                    ))}
+      {onJump && (
+        <div className="flex items-center justify-end">
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-8 gap-1 text-xs text-muted-foreground"
+            onClick={() => onJump("roster")}
+          >
+            View full roster
+            <ArrowRight className="h-3.5 w-3.5" />
+          </Button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function MatricesView({
+  snapshot,
+  podNames,
+  matrices,
+}: {
+  snapshot: Snapshot;
+  podNames: string[];
+  matrices: {
+    podHourly: Record<string, number[]>;
+    colTotals: number[];
+    callVolumeHour: number[];
+    maxHourCell: number;
+    shiftIds: string[];
+    podShift: Record<string, Record<string, number>>;
+    shiftTotals: number[];
+    maxShift: number;
+    podRole: Record<string, Record<string, number>>;
+    roleTotals: number[];
+    maxRole: number;
+  };
+}) {
+  return (
+    <div className="space-y-6">
+      <div>
+        <h3 className="font-semibold text-sm mb-2">Team × Hour coverage</h3>
+        <div className="overflow-x-auto">
+          <table className="text-xs border-separate border-spacing-0 min-w-full">
+            <thead>
+              <tr>
+                <th className="text-left p-2 sticky left-0 bg-card">Team</th>
+                {snapshot.meta.hours.map((h) => (
+                  <th
+                    key={h}
+                    className="p-2 text-center text-[10px] text-muted-foreground font-mono"
+                  >
+                    {h}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {podNames.map((podName) => (
+                <tr key={podName}>
+                  <td className="p-2 sticky left-0 bg-card border-r font-semibold">
+                    <TeamLink teamName={podName} className="text-xs" />
+                  </td>
+                  {matrices.podHourly[podName].map((v, i) => (
+                    <td
+                      key={i}
+                      className={`p-1 text-center num ${cellTone(v, matrices.maxHourCell)}`}
+                      title={`${podName} · ${snapshot.meta.hours[i]} · ${v.toFixed(1)} CSA`}
+                    >
+                      {v ? v.toFixed(1) : ""}
+                    </td>
+                  ))}
+                </tr>
+              ))}
+              <tr className="border-t-2">
+                <td className="p-2 sticky left-0 bg-muted/50 font-semibold">
+                  Scheduled total
+                </td>
+                {matrices.colTotals.map((v, i) => (
+                  <td
+                    key={i}
+                    className="p-1 text-center num bg-muted/30 font-semibold"
+                  >
+                    {v ? v.toFixed(1) : ""}
+                  </td>
+                ))}
+              </tr>
+              <tr>
+                <td className="p-2 sticky left-0 bg-muted/50 font-medium text-muted-foreground">
+                  Calls
+                </td>
+                {matrices.callVolumeHour.map((v, i) => (
+                  <td
+                    key={i}
+                    className="p-1 text-center num text-muted-foreground"
+                  >
+                    {v ? Math.round(v) : ""}
+                  </td>
+                ))}
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div>
+          <h3 className="font-semibold text-sm mb-2">Team × Shift overlap</h3>
+          <p className="text-xs text-muted-foreground mb-2">
+            Shift template count per team.
+          </p>
+          <div className="overflow-x-auto">
+            <table className="text-xs border-separate border-spacing-0 min-w-full">
+              <thead>
+                <tr>
+                  <th className="text-left p-2 sticky left-0 bg-card">Team</th>
+                  {matrices.shiftIds.map((s) => (
+                    <th
+                      key={s}
+                      className="p-2 text-center text-[11px] text-muted-foreground"
+                    >
+                      {s}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {podNames.map((podName) => (
+                  <tr key={podName}>
+                    <td className="p-2 sticky left-0 bg-card border-r font-semibold">
+                      <TeamLink teamName={podName} className="text-xs" />
+                    </td>
+                    {matrices.shiftIds.map((s) => {
+                      const v = matrices.podShift[podName][s];
+                      return (
+                        <td
+                          key={s}
+                          className={`p-2 text-center num ${cellTone(v, matrices.maxShift)}`}
+                        >
+                          {v || ""}
+                        </td>
+                      );
+                    })}
                   </tr>
-                </thead>
-                <tbody>
-                  {podNames.map((podName) => (
+                ))}
+                <tr className="border-t-2">
+                  <td className="p-2 sticky left-0 bg-muted/50 font-semibold">
+                    Total
+                  </td>
+                  {matrices.shiftTotals.map((v, i) => (
+                    <td
+                      key={i}
+                      className="p-2 text-center num bg-muted/30 font-semibold"
+                    >
+                      {v || ""}
+                    </td>
+                  ))}
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div>
+          <h3 className="font-semibold text-sm mb-2">Team × Role mix</h3>
+          <div className="overflow-x-auto">
+            <table className="text-xs border-separate border-spacing-0 min-w-full">
+              <thead>
+                <tr>
+                  <th className="text-left p-2 sticky left-0 bg-card">Team</th>
+                  {ROLE_KEYS.map((r) => (
+                    <th
+                      key={r}
+                      className="p-2 text-center text-[11px] text-muted-foreground"
+                    >
+                      {r}
+                    </th>
+                  ))}
+                  <th className="p-2 text-right">People</th>
+                </tr>
+              </thead>
+              <tbody>
+                {podNames.map((podName) => {
+                  const tot = Object.values(matrices.podRole[podName]).reduce(
+                    (s, v) => s + v,
+                    0,
+                  );
+                  return (
                     <tr key={podName}>
                       <td className="p-2 sticky left-0 bg-card border-r font-semibold">
                         <TeamLink teamName={podName} className="text-xs" />
                       </td>
-                      {matrices.podHourly[podName].map((v, i) => (
-                        <td
-                          key={i}
-                          className={`p-1 text-center num ${cellTone(v, matrices.maxHourCell)}`}
-                          title={`${podName} · ${snapshot.meta.hours[i]} · ${v.toFixed(1)} CSA`}
-                        >
-                          {v ? v.toFixed(1) : ""}
-                        </td>
-                      ))}
+                      {ROLE_KEYS.map((r) => {
+                        const v = matrices.podRole[podName][r];
+                        return (
+                          <td
+                            key={r}
+                            className={`p-2 text-center num ${cellTone(v, matrices.maxRole)}`}
+                          >
+                            {v || ""}
+                          </td>
+                        );
+                      })}
+                      <td className="p-2 text-right font-semibold num">
+                        {tot}
+                      </td>
                     </tr>
+                  );
+                })}
+                <tr className="border-t-2">
+                  <td className="p-2 sticky left-0 bg-muted/50 font-semibold">
+                    Total
+                  </td>
+                  {matrices.roleTotals.map((v, i) => (
+                    <td
+                      key={i}
+                      className="p-2 text-center num bg-muted/30 font-semibold"
+                    >
+                      {v}
+                    </td>
                   ))}
-                  <tr className="border-t-2">
-                    <td className="p-2 sticky left-0 bg-muted/50 font-semibold">
-                      Scheduled total
-                    </td>
-                    {matrices.colTotals.map((v, i) => (
-                      <td
-                        key={i}
-                        className="p-1 text-center num bg-muted/30 font-semibold"
-                      >
-                        {v ? v.toFixed(1) : ""}
-                      </td>
-                    ))}
-                  </tr>
-                  <tr>
-                    <td className="p-2 sticky left-0 bg-muted/50 font-medium text-muted-foreground">
-                      Calls
-                    </td>
-                    {matrices.callVolumeHour.map((v, i) => (
-                      <td
-                        key={i}
-                        className="p-1 text-center num text-muted-foreground"
-                      >
-                        {v ? Math.round(v) : ""}
-                      </td>
-                    ))}
-                  </tr>
-                </tbody>
-              </table>
-            </div>
+                  <td className="p-2 text-right font-bold num">
+                    {matrices.roleTotals.reduce((s, v) => s + v, 0)}
+                  </td>
+                </tr>
+              </tbody>
+            </table>
           </div>
-
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <div>
-              <h3 className="font-semibold text-sm mb-2">
-                Team × Shift overlap
-              </h3>
-              <p className="text-xs text-muted-foreground mb-2">
-                Shift template count per team.
-              </p>
-              <div className="overflow-x-auto">
-                <table className="text-xs border-separate border-spacing-0 min-w-full">
-                  <thead>
-                    <tr>
-                      <th className="text-left p-2 sticky left-0 bg-card">Team</th>
-                      {matrices.shiftIds.map((s) => (
-                        <th
-                          key={s}
-                          className="p-2 text-center text-[11px] text-muted-foreground"
-                        >
-                          {s}
-                        </th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {podNames.map((podName) => (
-                      <tr key={podName}>
-                        <td className="p-2 sticky left-0 bg-card border-r font-semibold">
-                          <TeamLink teamName={podName} className="text-xs" />
-                        </td>
-                        {matrices.shiftIds.map((s) => {
-                          const v = matrices.podShift[podName][s];
-                          return (
-                            <td
-                              key={s}
-                              className={`p-2 text-center num ${cellTone(v, matrices.maxShift)}`}
-                            >
-                              {v || ""}
-                            </td>
-                          );
-                        })}
-                      </tr>
-                    ))}
-                    <tr className="border-t-2">
-                      <td className="p-2 sticky left-0 bg-muted/50 font-semibold">
-                        Total
-                      </td>
-                      {matrices.shiftTotals.map((v, i) => (
-                        <td
-                          key={i}
-                          className="p-2 text-center num bg-muted/30 font-semibold"
-                        >
-                          {v || ""}
-                        </td>
-                      ))}
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
-            </div>
-
-            <div>
-              <h3 className="font-semibold text-sm mb-2">Team × Role mix</h3>
-              <div className="overflow-x-auto">
-                <table className="text-xs border-separate border-spacing-0 min-w-full">
-                  <thead>
-                    <tr>
-                      <th className="text-left p-2 sticky left-0 bg-card">Team</th>
-                      {ROLE_KEYS.map((r) => (
-                        <th
-                          key={r}
-                          className="p-2 text-center text-[11px] text-muted-foreground"
-                        >
-                          {r}
-                        </th>
-                      ))}
-                      <th className="p-2 text-right">People</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {podNames.map((podName) => {
-                      const tot = Object.values(
-                        matrices.podRole[podName],
-                      ).reduce((s, v) => s + v, 0);
-                      return (
-                        <tr key={podName}>
-                          <td className="p-2 sticky left-0 bg-card border-r font-semibold">
-                            <TeamLink teamName={podName} className="text-xs" />
-                          </td>
-                          {ROLE_KEYS.map((r) => {
-                            const v = matrices.podRole[podName][r];
-                            return (
-                              <td
-                                key={r}
-                                className={`p-2 text-center num ${cellTone(v, matrices.maxRole)}`}
-                              >
-                                {v || ""}
-                              </td>
-                            );
-                          })}
-                          <td className="p-2 text-right font-semibold num">
-                            {tot}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                    <tr className="border-t-2">
-                      <td className="p-2 sticky left-0 bg-muted/50 font-semibold">
-                        Total
-                      </td>
-                      {matrices.roleTotals.map((v, i) => (
-                        <td
-                          key={i}
-                          className="p-2 text-center num bg-muted/30 font-semibold"
-                        >
-                          {v}
-                        </td>
-                      ))}
-                      <td className="p-2 text-right font-bold num">
-                        {matrices.roleTotals.reduce((s, v) => s + v, 0)}
-                      </td>
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          </div>
-
-          <CoverageLegend />
         </div>
-      </SectionCard>
+      </div>
 
-      <SectionCard title="Supervisor coverage">
+      <CoverageLegend />
+    </div>
+  );
+}
+
+function TimelineView({
+  snapshot,
+  day,
+  podNames,
+  callVolumeHour,
+  scheduledHour,
+}: {
+  snapshot: Snapshot;
+  day: DOW;
+  podNames: string[];
+  callVolumeHour: number[];
+  scheduledHour: number[];
+}) {
+  return (
+    <div className="space-y-6">
+      <div>
+        <h3 className="font-semibold text-sm mb-2">
+          Supervisor on-duty timeline · {day}
+        </h3>
+        <p className="text-xs text-muted-foreground mb-2">
+          Horizontal bars show each supervisor&apos;s DAY or NIGHT shift window.
+          Expand a row to see that supervisor&apos;s team members scheduled the
+          same day.
+        </p>
+        <SupervisorDutyTimeline snapshot={snapshot} day={day} />
+      </div>
+
+      <div>
+        <h3 className="font-semibold text-sm mb-2">
+          Team coverage timeline · {day}
+        </h3>
+        <SupervisorGantt
+          snapshot={snapshot}
+          day={day}
+          podNames={podNames}
+          callVolumeHour={callVolumeHour}
+          scheduledHour={scheduledHour}
+        />
+        <div className="flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-muted-foreground mt-2">
+          {Object.entries(SHIFT_COLOR).map(([k, c]) => (
+            <span key={k} className="inline-flex items-center gap-1">
+              <span
+                className="inline-block w-3 h-3 rounded-sm"
+                style={{ background: c }}
+              />
+              {k}
+            </span>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function CoverageView({
+  snapshot,
+  sched,
+  csaGrid,
+}: {
+  snapshot: Snapshot;
+  sched: Snapshot["supervisor_schedule"];
+  csaGrid: number[][];
+}) {
+  return (
+    <div className="space-y-6">
+      <div>
+        <h3 className="font-semibold text-sm mb-3">Supervisor coverage</h3>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           <StatTile
             label="Hours covered ≥ 1"
@@ -419,90 +539,13 @@ export function SupervisorTab({ snapshot }: SupervisorTabProps) {
             value={String(sched.overlap_hours)}
           />
         </div>
-      </SectionCard>
+      </div>
 
       <CoverageProof24x7 snapshot={snapshot} csaGrid={csaGrid} />
       <OvernightProof snapshot={snapshot} />
 
-      <SectionCard title="Team roster">
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {Object.entries(directReports).map(([supId, podsForSup]) => (
-            <div key={supId} className="border rounded-lg p-4 bg-background">
-              <div className="font-semibold">
-                <AgentLink agentId={supId} className="text-sm" />
-              </div>
-              <div className="mt-2 mb-3 rounded-md bg-muted/40 border p-2">
-                <div className="text-xs font-semibold mb-1">
-                  Supervisor schedule
-                </div>
-                <div className="space-y-1">
-                  {supById[supId]?.assignments.map((a, i) => (
-                    <div
-                      key={i}
-                      className="text-xs flex justify-between gap-2"
-                    >
-                      <span>{a.weekday.slice(0, 3)}</span>
-                      <span className="font-medium">{a.shift_type}</span>
-                      <span className="font-mono text-muted-foreground">
-                        {a.hours}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-              {podsForSup.map((podName) => {
-                const p = snapshot.pods[podName];
-                const members = p.members
-                  .map((id) => snapshot.agents.find((a) => a.id === id))
-                  .filter((a): a is Agent => !!a);
-                return (
-                  <div
-                    key={podName}
-                    className="pl-3 border-l-2 border-border mt-2"
-                  >
-                    <div className="font-medium text-sm">
-                      <TeamLink teamName={podName} />
-                    </div>
-                    <div className="text-xs text-muted-foreground mb-1">
-                      {p.type} · Lead{" "}
-                      {p.lead_id !== "Coached by Supervisor" ? (
-                        <AgentLink agentId={p.lead_id} className="inline" />
-                      ) : (
-                        p.lead_id
-                      )}
-                    </div>
-                    <div className="text-xs font-semibold mb-2">
-                      Pod coverage window: {p.coverage_window || "varies"}
-                    </div>
-                    <div className="space-y-1">
-                      {members.map((m) => (
-                        <div
-                          key={m.id}
-                          className="text-xs flex justify-between gap-2"
-                        >
-                          <AgentLink agentId={m.id} />
-                          <span className="flex items-center gap-1">
-                            <span
-                              className="w-2 h-2 rounded-sm"
-                              style={{ background: shiftColor(m.shift_id) }}
-                            />
-                            {m.role} {m.position}
-                          </span>
-                          <span className="num text-muted-foreground">
-                            {m.start_clock}-{m.end_clock}
-                          </span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          ))}
-        </div>
-      </SectionCard>
-
-      <SectionCard title="On-duty schedule">
+      <div>
+        <h3 className="font-semibold text-sm mb-2">On-duty schedule</h3>
         <Table>
           <TableHeader>
             <TableRow>
@@ -528,7 +571,7 @@ export function SupervisorTab({ snapshot }: SupervisorTabProps) {
             ))}
           </TableBody>
         </Table>
-      </SectionCard>
+      </div>
     </div>
   );
 }
@@ -588,9 +631,11 @@ function CoverageProof24x7({
   const allOk = csaGapCells === 0 && supGapCells === 0;
 
   return (
-    <SectionCard
-      title="24/7 agent + supervisor coverage proof"
-      toolbar={
+    <div>
+      <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+        <h3 className="font-semibold text-sm">
+          24/7 agent + supervisor coverage proof
+        </h3>
         <Badge
           variant={allOk ? "success" : csaGapCells > 0 ? "destructive" : "warning"}
         >
@@ -598,8 +643,7 @@ function CoverageProof24x7({
             ? "Full 24/7 coverage"
             : `${csaGapCells} hour(s) where avg CSA < 1`}
         </Badge>
-      }
-    >
+      </div>
       <div className="grid grid-cols-3 gap-3 mb-3 text-xs">
         <div className="border rounded p-2">
           <div className="text-muted-foreground">Hour-cells fully covered</div>
@@ -686,7 +730,7 @@ function CoverageProof24x7({
         1 CSA is on a paid break and the on-duty supervisor staffs the floor.
         Rose = supervisor gap.
       </p>
-    </SectionCard>
+    </div>
   );
 }
 
@@ -705,14 +749,15 @@ function OvernightProof({ snapshot }: { snapshot: Snapshot }) {
   );
 
   return (
-    <SectionCard
-      title="Overnight coverage proof · 00:00–06:00"
-      toolbar={
+    <div>
+      <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+        <h3 className="font-semibold text-sm">
+          Overnight coverage proof · 00:00–06:00
+        </h3>
         <Badge variant={allCovered ? "success" : "destructive"}>
           {allCovered ? "All overnight hours covered" : "Coverage gap detected"}
         </Badge>
-      }
-    >
+      </div>
       <div className="overflow-x-auto">
         <table className="w-full text-sm border-separate border-spacing-0">
           <thead className="bg-muted/40">
@@ -765,6 +810,6 @@ function OvernightProof({ snapshot }: { snapshot: Snapshot }) {
         enforces &ldquo;supply at least 1&rdquo; as a hard constraint for every
         (day, hour).
       </p>
-    </SectionCard>
+    </div>
   );
 }

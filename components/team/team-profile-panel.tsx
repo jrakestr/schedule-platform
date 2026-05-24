@@ -23,6 +23,7 @@ import {
   teamParam,
   teamRoleParam,
 } from "@/lib/navigation/panel-params";
+import { podNamesOrdered } from "@/lib/compute/week-schedule";
 import type { Agent, Snapshot } from "@/lib/data/types";
 import { cn } from "@/lib/utils";
 import type { TabId } from "@/components/tab-ids";
@@ -58,8 +59,8 @@ export function TeamProfilePanel({ snapshot, onJump }: TeamProfilePanelProps) {
   );
 
   const podIndex = useMemo(
-    () => Object.keys(snapshot.pods).indexOf(teamName ?? ""),
-    [snapshot.pods, teamName],
+    () => podNamesOrdered(snapshot.pods).indexOf(podEntry?.name ?? ""),
+    [snapshot.pods, podEntry?.name],
   );
 
   const roleCounts = useMemo(() => {

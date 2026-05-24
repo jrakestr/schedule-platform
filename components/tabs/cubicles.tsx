@@ -17,12 +17,19 @@ import {
 import {
   Tooltip,
   TooltipContent,
-  TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { AgentLink } from "@/components/agent/agent-link";
 import { CubiclePill } from "@/components/shared/cubicle-pill";
-import { cellTone } from "@/lib/compute/colors";
+import { StatTile } from "@/components/charts/stat-tile";
+import {
+  CUBICLE_LEGEND_STEPS,
+  CUBICLE_NEAR_CAP_THRESHOLD,
+  cubicleBarColor,
+  cubicleColor,
+  cubicleOccupancyRatio,
+  cubicleStatTone,
+} from "@/lib/compute/colors";
 import { DOW_LIST, type DOW, type Snapshot } from "@/lib/data/types";
 import { Search, X, RotateCcw, Info, User, HelpCircle } from "lucide-react";
 
@@ -55,6 +62,29 @@ export function CubiclesTab({ snapshot }: CubiclesTabProps) {
     }
     return peak;
   }, [occ]);
+
+  const nearCapThreshold = cap * CUBICLE_NEAR_CAP_THRESHOLD;
+
+  const hoursNearCap = useMemo(() => {
+    let count = 0;
+    for (const d of DOW_LIST) {
+      for (const v of occ[d] ?? []) {
+        if (v >= nearCapThreshold) count += 1;
+      }
+    }
+    return count;
+  }, [occ, nearCapThreshold]);
+
+  const dailyPeaks = useMemo(
+    () =>
+      DOW_LIST.map((d) => {
+        const row = occ[d] ?? [];
+        let peak = 0;
+        for (const v of row) if (v > peak) peak = v;
+        return { day: d, peak };
+      }),
+    [occ],
+  );
 
   const occupants = useMemo(
     () =>
@@ -118,17 +148,66 @@ export function CubiclesTab({ snapshot }: CubiclesTabProps) {
   }, [cubicleFilter]);
 
   return (
-    <TooltipProvider>
-      <div className="space-y-5">
+    <div className="space-y-5">
         <SectionCard
           title={`Cubicle occupancy · hard cap ${cap}`}
           description="Average concurrent occupants per hour. CSAs, NDS, and SDS share the cubicle pool. Supervisors are excluded (they float)."
           toolbar={
-            <Badge variant={peakOcc >= cap ? "warning" : "secondary"} className="font-mono">
+            <Badge
+              variant={peakOcc >= nearCapThreshold ? "warning" : "secondary"}
+              className="font-mono"
+            >
               Week peak {peakOcc.toFixed(1)} / {cap}
             </Badge>
           }
         >
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+            <StatTile
+              label="Week peak occupancy"
+              value={`${peakOcc.toFixed(1)} / ${cap}`}
+              tone={cubicleStatTone(peakOcc, cap)}
+              hint={`${Math.round(cubicleOccupancyRatio(peakOcc, cap) * 100)}% of cap`}
+            />
+            <StatTile
+              label="Hours near cap"
+              value={String(hoursNearCap)}
+              tone={hoursNearCap > 0 ? cubicleStatTone(nearCapThreshold, cap) : undefined}
+              hint={`≥ ${Math.round(CUBICLE_NEAR_CAP_THRESHOLD * 100)}% (${nearCapThreshold.toFixed(1)} seats)`}
+            />
+            <StatTile
+              label="Physical cap"
+              value={String(cap)}
+              hint="Concurrent cubicle seats"
+            />
+            <StatTile
+              label="Agents in pool"
+              value={String(occupants.length)}
+              hint="CSAs, NDS, SDS — supervisors excluded"
+            />
+          </div>
+
+          <div className="mb-4 space-y-2">
+            <p className="text-xs font-medium text-foreground">Daily peak occupancy</p>
+            <div className="space-y-1.5">
+              {dailyPeaks.map(({ day, peak }) => {
+                const pct = Math.min(100, cubicleOccupancyRatio(peak, cap) * 100);
+                return (
+                  <div key={day} className="flex items-center gap-3 text-xs">
+                    <span className="w-8 font-medium text-muted-foreground">{day}</span>
+                    <div className="flex-1 h-2.5 rounded-full bg-muted overflow-hidden">
+                      <div
+                        className={`h-full rounded-full transition-all ${cubicleBarColor(peak, cap)}`}
+                        style={{ width: `${pct}%` }}
+                      />
+                    </div>
+                    <span className="w-16 text-right num tabular-nums text-muted-foreground">
+                      {peak.toFixed(1)}/{cap}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
           <div className="overflow-x-auto border rounded-md">
             <table className="text-xs border-separate border-spacing-0 min-w-full">
               <thead className="bg-muted/40">
@@ -181,7 +260,7 @@ export function CubiclesTab({ snapshot }: CubiclesTabProps) {
                                   setHoveredHourIdx(null);
                                   setHoveredDay(null);
                                 }}
-                                className={`p-2 text-center num cursor-pointer border-r border-b transition-all duration-150 select-none ${cellTone(v, cap)} ${
+                                className={`p-2 text-center num cursor-pointer border-r border-b transition-all duration-150 select-none ${cubicleColor(v, cap)} ${
                                   isCellHovered
                                     ? "ring-2 ring-indigo-500 scale-105 z-10 font-bold"
                                     : isRowHovered || isColHovered
@@ -208,30 +287,16 @@ export function CubiclesTab({ snapshot }: CubiclesTabProps) {
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mt-4 pt-3 border-t">
             <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
               <span className="font-medium text-foreground">Utilized Cubicles:</span>
-              <span className="inline-flex items-center gap-1.5">
-                <span className="w-3 h-3 rounded bg-slate-50 border border-border dark:bg-slate-900" />
-                0 (Empty)
-              </span>
-              <span className="inline-flex items-center gap-1.5">
-                <span className="w-3 h-3 rounded bg-indigo-50 dark:bg-indigo-950" />
-                &lt; 25% (Light)
-              </span>
-              <span className="inline-flex items-center gap-1.5">
-                <span className="w-3 h-3 rounded bg-indigo-200 dark:bg-indigo-900" />
-                25% - 50%
-              </span>
-              <span className="inline-flex items-center gap-1.5">
-                <span className="w-3 h-3 rounded bg-indigo-400" />
-                50% - 75%
-              </span>
-              <span className="inline-flex items-center gap-1.5">
-                <span className="w-3 h-3 rounded bg-indigo-600" />
-                &ge; 75% (Near Cap)
-              </span>
+              {CUBICLE_LEGEND_STEPS.map((step) => (
+                <span key={step.label} className="inline-flex items-center gap-1.5">
+                  <span className={`w-3 h-3 rounded ${step.className}`} />
+                  {step.label}
+                </span>
+              ))}
             </div>
 
             <p className="text-[11px] text-muted-foreground max-w-lg leading-normal md:text-right">
-              The cubicle optimizer is capped at {cap} seats; solid dark regions represent binding capacity constraints.
+              Red cells mark hours at or above {Math.round(CUBICLE_NEAR_CAP_THRESHOLD * 100)}% of the {cap}-seat cap ({nearCapThreshold.toFixed(1)}+ occupants).
             </p>
           </div>
         </SectionCard>
@@ -389,6 +454,5 @@ export function CubiclesTab({ snapshot }: CubiclesTabProps) {
           </div>
         </SectionCard>
       </div>
-    </TooltipProvider>
   );
 }

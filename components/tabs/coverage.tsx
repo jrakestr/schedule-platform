@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { Info } from "lucide-react";
 import { SectionCard } from "@/components/shared/section-card";
 import { DayTabs } from "@/components/shared/day-tabs";
+import { LabelWithHelp } from "@/components/shared/metric-help";
 import { ShapeChart } from "@/components/charts/shape-chart";
 import { StatTile } from "@/components/charts/stat-tile";
 import { Badge } from "@/components/ui/badge";
@@ -18,9 +19,18 @@ import {
 } from "@/components/ui/table";
 import { csaSupply, schedulerSupply } from "@/lib/compute/supply";
 import { getLegacyCsaSupply } from "@/lib/compute/legacy-supply";
+import {
+  WFM_DATA_SOURCE,
+  WFM_OFFERED,
+  WFM_PROPOSED,
+  WFM_LEGACY,
+  WFM_VOLUME_MATCHED,
+} from "@/lib/copy/wfm-tooltips";
 import { f0, f1, pct, sum } from "@/lib/utils";
+import { RosterComparison } from "@/components/coverage/roster-comparison";
 import { CSA_FUNCTIONS, type DOW } from "@/lib/data/types";
 import type { Snapshot } from "@/lib/data/types";
+import type { OptimizationMeta } from "@/lib/data/snapshot";
 
 // =============================================================================
 // Coverage Tab (Proposed vs Current/Legacy distribution analysis)
@@ -28,10 +38,19 @@ import type { Snapshot } from "@/lib/data/types";
 
 interface CoverageTabProps {
   snapshot: Snapshot;
+  baselineSnapshot: Snapshot;
   leadPct: number;
+  optimizations: OptimizationMeta[];
+  activeOptId?: string;
 }
 
-export function CoverageTab({ snapshot, leadPct }: CoverageTabProps) {
+export function CoverageTab({
+  snapshot,
+  baselineSnapshot,
+  leadPct,
+  optimizations,
+  activeOptId,
+}: CoverageTabProps) {
   const [day, setDay] = useState<DOW>("Mon");
   const [viewMode, setViewMode] = useState<"proposed" | "legacy" | "compare">("proposed");
   const [metricMode, setMetricMode] = useState<"share" | "raw">("share");
@@ -56,13 +75,32 @@ export function CoverageTab({ snapshot, leadPct }: CoverageTabProps) {
 
   return (
     <div className="space-y-6">
+      <RosterComparison
+        volumeSnapshot={snapshot}
+        baselineSnapshot={baselineSnapshot}
+        activeSnapshot={snapshot}
+        leadPct={leadPct}
+        optimizations={optimizations}
+        activeOptId={activeOptId}
+      />
+
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
         <SectionCard
           className="lg:col-span-2"
-          title={`Where the calls are vs where the people are · ${day}`}
+          title={
+            <LabelWithHelp
+              label={`Where the calls are vs where the people are · ${day}`}
+              help={
+                <>
+                  <p>{WFM_DATA_SOURCE}</p>
+                  <p className="mt-1.5">{WFM_VOLUME_MATCHED}</p>
+                </>
+              }
+            />
+          }
           description={metricMode === "share"
-            ? "Both curves are normalized to 100% of the day. The view isolates the shape mismatch between demand and staffing — it does not quantify the headcount gap."
-            : "Actual calls per interval mapped against scheduled agent headcount on phones. This views exact volumes and active capacities rather than normalized shapes."
+            ? "Both curves are normalized to 100% of the day. Shape mismatch only — not Erlang gap. Hover (?) on stat tiles for definitions."
+            : "Offered calls vs Voice headcount by 30-min interval. Hover (?) on stat tiles for definitions."
           }
           toolbar={
             <div className="flex flex-wrap gap-2 items-center">
@@ -120,18 +158,27 @@ export function CoverageTab({ snapshot, leadPct }: CoverageTabProps) {
             <StatTile
               label="Daily call volume"
               value={f0(stats.offered)}
+              tooltip={WFM_OFFERED}
             />
             <StatTile
               label="Proposed CSA hours"
               value={f1(stats.staff / 2)}
+              tooltip={
+                <>
+                  <p>{WFM_PROPOSED}</p>
+                  <p className="mt-1.5">Summed Voice-interval supply for the day (each 30-min slot with ≥15 min Voice counts 0.5 h).</p>
+                </>
+              }
             />
             <StatTile
               label="Current/Legacy CSA hours"
               value={f1(stats.legacyStaff / 2)}
+              tooltip={WFM_LEGACY}
             />
             <StatTile
               label="Volume-matched share"
               value={pct(stats.matchedShare)}
+              tooltip={WFM_VOLUME_MATCHED}
               tone={
                 stats.matchedShare >= 0.8
                   ? "text-emerald-700 dark:text-emerald-400"

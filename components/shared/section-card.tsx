@@ -6,6 +6,8 @@ interface SectionCardProps
   title?: React.ReactNode;
   description?: React.ReactNode;
   toolbar?: React.ReactNode;
+  /** Override default padding on the content area. */
+  contentClassName?: string;
   /** Left-edge accent color (hex). Uses pod palette when set. */
   accentColor?: string;
 }
@@ -16,6 +18,7 @@ export function SectionCard({
   toolbar,
   children,
   className,
+  contentClassName,
   accentColor,
   ...rest
 }: SectionCardProps) {
@@ -71,7 +74,7 @@ export function SectionCard({
             )}
           </header>
         )}
-        <div className="p-5">{children}</div>
+        <div className={cn("p-5", contentClassName)}>{children}</div>
       </div>
     </section>
   );

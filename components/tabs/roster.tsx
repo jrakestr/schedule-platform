@@ -46,12 +46,11 @@ import {
 } from "@/components/ui/table";
 import {
   shiftColor,
-  agentOperationalRole,
   roleBadgeClass,
 } from "@/lib/compute/colors";
 import { rosterRowsFor, type RosterRow } from "@/lib/compute/roster";
 import { cn } from "@/lib/utils";
-import type { Snapshot } from "@/lib/data/types";
+import { type Snapshot } from "@/lib/data/types";
 
 interface RosterTabProps {
   snapshot: Snapshot;
@@ -68,8 +67,6 @@ function parseClock(t: string): number | null {
   return Number(m[1]) * 60 + Number(m[2]);
 }
 
-// True if the (possibly-overnight) shift between start and end covers the
-// given hour. Mirrors parseSegs's wrap-past-midnight rule.
 function shiftCoversHour(
   startClock: string,
   endClock: string,

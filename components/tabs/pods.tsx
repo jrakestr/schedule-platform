@@ -41,6 +41,7 @@ import {
   podAccentColor,
 } from "@/lib/compute/colors";
 import type { Agent, Pod, Snapshot, DOW } from "@/lib/data/types";
+import { podNamesOrdered } from "@/lib/compute/week-schedule";
 import { cn } from "@/lib/utils";
 import { DayTabs } from "@/components/shared/day-tabs";
 
@@ -52,7 +53,7 @@ const STORAGE_KEY = "schedule-platform.pod-order";
 
 export function PodsTab({ snapshot }: PodsTabProps) {
   const [highlightTeam] = useQueryState("team", teamParam);
-  const canonicalOrder = useMemo(() => Object.keys(snapshot.pods), [snapshot.pods]);
+  const canonicalOrder = useMemo(() => podNamesOrdered(snapshot.pods), [snapshot.pods]);
   const [order, setOrder] = useState<string[]>(canonicalOrder);
   const [day, setDay] = useState<DOW>("Mon");
 
@@ -68,9 +69,11 @@ export function PodsTab({ snapshot }: PodsTabProps) {
         parsed.every((p) => canonicalOrder.includes(p))
       ) {
         setOrder(parsed);
+        return;
       }
+      window.localStorage.removeItem(STORAGE_KEY);
     } catch {
-      // ignore
+      window.localStorage.removeItem(STORAGE_KEY);
     }
   }, [canonicalOrder]);
 

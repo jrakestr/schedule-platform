@@ -18,6 +18,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { AgentLink } from "@/components/agent/agent-link";
 import { cellTone } from "@/lib/compute/colors";
 import { DOW_LIST, type DOW, type Snapshot } from "@/lib/data/types";
 import { Search, X, RotateCcw, Info, User, HelpCircle } from "lucide-react";
@@ -333,8 +334,8 @@ export function CubiclesTab({ snapshot }: CubiclesTabProps) {
                 <tbody>
                   {filteredOccupants.map((a) => (
                     <tr key={a.id} className="border-b last:border-b-0 hover:bg-muted/30 transition-colors">
-                      <td className="p-2 font-mono sticky left-0 bg-card z-10 border-r text-xs font-semibold">
-                        {a.id}
+                      <td className="p-2 sticky left-0 bg-card z-10 border-r text-xs">
+                        <AgentLink agentId={a.id} />
                       </td>
                       <td className="p-2 text-xs text-muted-foreground">
                         {a.role} {a.position}

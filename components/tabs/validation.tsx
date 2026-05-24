@@ -11,8 +11,8 @@ import {
   PhoneCall,
   UserCheck,
   Building,
-  User,
 } from "lucide-react";
+import { AgentLink } from "@/components/agent/agent-link";
 import { SectionCard } from "@/components/shared/section-card";
 import { DayTabs } from "@/components/shared/day-tabs";
 import { StatTile } from "@/components/charts/stat-tile";
@@ -89,12 +89,6 @@ export function ValidationTab({ snapshot, leadPct }: ValidationTabProps) {
     setOnShift(hh);
     setGlobalSearch(""); // clear search when drilling to entire hour
     setTab("roster");
-  };
-
-  const drillToAgent = (agentId: string) => {
-    setOnShift(null); // clear hour filter on roster to show their full shift
-    setGlobalSearch(agentId); // search for this agent
-    setTab("roster"); // jump to roster
   };
 
   // Helper map to find which pod an agent belongs to
@@ -708,7 +702,7 @@ export function ValidationTab({ snapshot, leadPct }: ValidationTabProps) {
             description={
               viewMode === "legacy"
                 ? `Legacy CSA staffing on duty at ${selectedHour} · ${day}.`
-                : `Team members on duty at ${selectedHour} · ${day}; click ID for roster.`
+                : `Team members on duty at ${selectedHour} · ${day}; click ID for profile.`
             }
             toolbar={
               <Badge variant="success" className="font-mono">
@@ -729,18 +723,14 @@ export function ValidationTab({ snapshot, leadPct }: ValidationTabProps) {
                   >
                     <div className="flex items-center justify-between">
                       {viewMode === "legacy" ? (
-                        <span className="text-xs font-bold text-foreground px-1.5 py-0.5 bg-muted rounded">
+                        <span className="text-xs font-bold text-foreground px-1.5 py-0.5 bg-muted rounded font-mono">
                           {info.agent.id}
                         </span>
                       ) : (
-                        <button
-                          type="button"
-                          onClick={() => drillToAgent(info.agent.id)}
-                          className="font-mono text-xs font-bold text-primary hover:underline flex items-center gap-1 bg-primary/5 hover:bg-primary/10 px-1.5 py-0.5 rounded"
-                        >
-                          <User className="h-3 w-3" />
-                          {info.agent.id}
-                        </button>
+                        <AgentLink
+                          agentId={info.agent.id}
+                          className="inline-flex items-center gap-1 bg-primary/5 hover:bg-primary/10 px-1.5 py-0.5 rounded"
+                        />
                       )}
                       <div className="flex items-center gap-1.5">
                         {(() => {

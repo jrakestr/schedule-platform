@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useQueryState, parseAsString } from "nuqs";
 import { Search, User, Briefcase, Building2, Shield, Clock } from "lucide-react";
 import {
   CommandDialog,
@@ -21,6 +22,7 @@ interface CommandPaletteProps {
 
 export function CommandPalette({ snapshot, onJump }: CommandPaletteProps) {
   const [open, setOpen] = useState(false);
+  const [, setAgentId] = useQueryState("agent_id", parseAsString);
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -88,9 +90,10 @@ export function CommandPalette({ snapshot, onJump }: CommandPaletteProps) {
               <CommandItem
                 key={a.id}
                 value={`${a.id} ${a.role} ${a.position} ${a.shift_class}`}
-                onSelect={() =>
-                  run(a.role === "Supervisor" ? "supervisor" : "roster")
-                }
+                onSelect={() => {
+                  setOpen(false);
+                  setAgentId(a.id);
+                }}
               >
                 {a.role === "Supervisor" ? (
                   <Shield className="h-4 w-4 text-muted-foreground" />

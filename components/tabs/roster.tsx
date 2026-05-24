@@ -23,6 +23,7 @@ import {
   Search,
   X,
 } from "lucide-react";
+import { AgentLink } from "@/components/agent/agent-link";
 import { SectionCard } from "@/components/shared/section-card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -142,16 +143,17 @@ export function RosterTab({ snapshot }: RosterTabProps) {
       {
         accessorKey: "id",
         header: "Agent",
-        cell: ({ row }) => (
-          <span
-            className={cn(
-              "font-mono text-xs",
-              row.original.isContinuation && "text-muted-foreground/60",
-            )}
-          >
-            {row.original.id || "↳"}
-          </span>
-        ),
+        cell: ({ row }) =>
+          row.original.id ? (
+            <AgentLink
+              agentId={row.original.id}
+              className={cn(
+                row.original.isContinuation && "text-muted-foreground/60",
+              )}
+            />
+          ) : (
+            <span className="text-muted-foreground/60 text-xs">↳</span>
+          ),
       },
       {
         accessorKey: "role",
@@ -257,9 +259,12 @@ export function RosterTab({ snapshot }: RosterTabProps) {
       {
         accessorKey: "reports_to",
         header: "Reports to",
-        cell: ({ row }) => (
-          <span className="font-mono text-xs">{row.original.reports_to}</span>
-        ),
+        cell: ({ row }) =>
+          row.original.reports_to && row.original.reports_to !== "—" ? (
+            <AgentLink agentId={row.original.reports_to} />
+          ) : (
+            <span className="font-mono text-xs text-muted-foreground">—</span>
+          ),
       },
       {
         accessorKey: "hours",

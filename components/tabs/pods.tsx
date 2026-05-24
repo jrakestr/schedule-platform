@@ -17,6 +17,7 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { GripVertical, RefreshCw, Users } from "lucide-react";
+import { AgentLink } from "@/components/agent/agent-link";
 import { PodBarChart } from "@/components/charts/pod-bar-chart";
 import { PodTangleChart } from "@/components/charts/pod-tangle-chart";
 import { SectionCard } from "@/components/shared/section-card";
@@ -205,12 +206,12 @@ function PodCard({
         </div>
         <div className="text-xs text-muted-foreground">
           {pod.type} · Supervisor:{" "}
-          <span className="font-mono text-foreground">{pod.supervisor_id}</span>
+          <AgentLink agentId={pod.supervisor_id} className="text-foreground" />
           {pod.lead_id !== "Coached by Supervisor" && (
             <>
               {" "}
               · Lead:{" "}
-              <span className="font-mono text-foreground">{pod.lead_id}</span>
+              <AgentLink agentId={pod.lead_id} className="text-foreground" />
             </>
           )}
         </div>
@@ -262,7 +263,7 @@ function PodCard({
                     key={m.id}
                     className="flex items-center justify-between gap-2 py-1"
                   >
-                    <span className="font-mono text-xs">{m.id}</span>
+                    <AgentLink agentId={m.id} />
                     <span className="flex items-center gap-1.5 text-xs">
                       <span
                         className="inline-block w-2.5 h-2.5 rounded-sm"

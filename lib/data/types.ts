@@ -90,6 +90,8 @@ export interface Assignment {
 
 export interface Agent {
   id: string;
+  /** Display name when mapped in the roster snapshot; falls back to id in UI. */
+  name?: string;
   role: "CSA" | "NDS" | "SDS" | "Supervisor";
   position: "Line" | "Lead" | "Supervisor";
   team?: string;

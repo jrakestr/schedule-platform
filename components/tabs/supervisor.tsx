@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { AgentLink } from "@/components/agent/agent-link";
 import { SectionCard } from "@/components/shared/section-card";
 import { DayTabs } from "@/components/shared/day-tabs";
 import { StatTile } from "@/components/charts/stat-tile";
@@ -476,7 +477,12 @@ export function SupervisorTab({ snapshot }: SupervisorTabProps) {
                   >
                     <div className="font-medium text-sm">{podName}</div>
                     <div className="text-xs text-muted-foreground mb-1">
-                      {p.type} · Lead {p.lead_id}
+                      {p.type} · Lead{" "}
+                      {p.lead_id !== "Coached by Supervisor" ? (
+                        <AgentLink agentId={p.lead_id} className="inline" />
+                      ) : (
+                        p.lead_id
+                      )}
                     </div>
                     <div className="text-xs font-semibold mb-2">
                       Pod coverage window: {p.coverage_window || "varies"}
@@ -487,7 +493,7 @@ export function SupervisorTab({ snapshot }: SupervisorTabProps) {
                           key={m.id}
                           className="text-xs flex justify-between gap-2"
                         >
-                          <span className="font-mono">{m.id}</span>
+                          <AgentLink agentId={m.id} />
                           <span className="flex items-center gap-1">
                             <span
                               className="w-2 h-2 rounded-sm"
@@ -520,7 +526,9 @@ export function SupervisorTab({ snapshot }: SupervisorTabProps) {
           <TableBody>
             {sched.supervisors.map((s) => (
               <TableRow key={s.id}>
-                <TableCell className="font-mono">{s.id}</TableCell>
+                <TableCell>
+                  <AgentLink agentId={s.id} />
+                </TableCell>
                 <TableCell className="text-sm">
                   {s.assignments
                     .map(

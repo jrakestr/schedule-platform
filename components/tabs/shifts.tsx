@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { ChevronRight, Clock, Users } from "lucide-react";
+import { AgentLink } from "@/components/agent/agent-link";
 import { SectionCard } from "@/components/shared/section-card";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -305,13 +306,19 @@ function ShiftDetail({
         <TableBody>
           {agents.map((a) => (
             <TableRow key={a.id}>
-              <TableCell className="font-mono text-xs">{a.id}</TableCell>
+              <TableCell>
+                <AgentLink agentId={a.id} />
+              </TableCell>
               <TableCell className="text-sm">
                 {a.role} {a.position}
               </TableCell>
               <TableCell className="text-sm">{a.pod}</TableCell>
-              <TableCell className="font-mono text-xs">
-                {a.supervisor_id}
+              <TableCell className="text-sm">
+                {a.supervisor_id && a.supervisor_id !== "—" ? (
+                  <AgentLink agentId={a.supervisor_id} />
+                ) : (
+                  <span className="text-muted-foreground">—</span>
+                )}
               </TableCell>
               <TableCell className="text-sm text-muted-foreground">
                 {a.off_pair ?? "—"}

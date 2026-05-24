@@ -1,8 +1,7 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import { useQueryState, parseAsString } from "nuqs";
-import { ArrowDown, ArrowUp, ChevronsUpDown } from "lucide-react";
 import {
   agentDisplayName,
   agentInitials,
@@ -13,14 +12,18 @@ import {
   roleColor,
   shiftColor,
 } from "@/lib/compute/colors";
-import { formatClock12 } from "@/lib/compute/day-structure";
+import { formatClock24 } from "@/lib/compute/day-structure";
 import {
   DOW_LIST,
   resolveDayCell,
   podNamesOrdered,
-  sortAgentsInPod,
+  sortScheduleAgents,
+  collectFlatScheduleAgentsBelowSupervisors,
+  collectSupervisorsOrdered,
+  agentMatchesScheduleFilters,
   type DayShiftCell,
   type WeekSortKey,
+  type WeekGroupMode,
 } from "@/lib/compute/week-schedule";
 import { cn } from "@/lib/utils";
 import type { Agent, DOW, Snapshot } from "@/lib/data/types";
@@ -31,6 +34,9 @@ interface WeekScheduleGridProps {
   positionFilter?: string;
   selectedDay?: DOW | null;
   onDaySelect?: (day: DOW) => void;
+  groupMode?: WeekGroupMode;
+  sortKey?: WeekSortKey;
+  sortDesc?: boolean;
   className?: string;
 }
 
@@ -39,15 +45,12 @@ function agentMatchesFilters(
   roleFilter: string,
   positionFilter: string,
 ): boolean {
-  const matchesRole = roleFilter === "All" || agent.role === roleFilter;
-  const matchesPosition =
-    positionFilter === "All" || agent.position === positionFilter;
-  return matchesRole && matchesPosition;
+  return agentMatchesScheduleFilters(agent, roleFilter, positionFilter);
 }
 
 function formatShiftRange(start?: string, end?: string): string {
   if (!start || !end) return "—";
-  return `${formatClock12(start)} – ${formatClock12(end)}`;
+  return `${formatClock24(start)} – ${formatClock24(end)}`;
 }
 
 function DayStaffingBar({ values }: { values: number[] }) {
@@ -132,37 +135,96 @@ function ShiftCellCard({
   );
 }
 
-function SortButton({
-  label,
-  active,
-  direction,
-  onClick,
+function AgentRow({
+  agent,
+  snapshot,
+  onOpen,
 }: {
-  label: string;
-  active: boolean;
-  direction: "asc" | "desc";
-  onClick: () => void;
+  agent: Agent;
+  snapshot: Snapshot;
+  onOpen: (id: string) => void;
 }) {
+  const opRole = agentOperationalRole(agent);
+  const rowAccent = opRole ? roleColor(opRole) : "#64748b";
+  const hours =
+    typeof agent.effective_hours_per_week === "number"
+      ? agent.effective_hours_per_week.toFixed(0)
+      : null;
+
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={cn(
-        "inline-flex items-center gap-0.5 text-[10px] font-medium uppercase tracking-wider",
-        active ? "text-foreground" : "text-muted-foreground hover:text-foreground",
-      )}
-    >
-      {label}
-      {active ? (
-        direction === "asc" ? (
-          <ArrowUp className="h-3 w-3" />
-        ) : (
-          <ArrowDown className="h-3 w-3" />
-        )
-      ) : (
-        <ChevronsUpDown className="h-3 w-3 opacity-50" />
-      )}
-    </button>
+    <tr className="border-b border-border/40 hover:bg-muted/10">
+      <td className="sticky left-0 z-10 min-w-[160px] max-w-[160px] border-r bg-card px-2 py-2">
+        <button
+          type="button"
+          onClick={() => onOpen(agent.id)}
+          className="flex w-full items-center gap-2 text-left hover:opacity-90"
+        >
+          <div
+            className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full border text-[9px] font-semibold"
+            style={{ borderColor: rowAccent, color: rowAccent }}
+          >
+            {agentInitials(agent)}
+          </div>
+          <div className="min-w-0 flex-1">
+            <div className="truncate text-[11px] font-medium">
+              {agentDisplayName(agent)}
+            </div>
+            <div className="truncate font-mono text-[9px] text-muted-foreground">
+              {agent.id}
+            </div>
+            {hours && (
+              <div className="num text-[9px] tabular-nums text-muted-foreground">
+                {hours}h
+              </div>
+            )}
+          </div>
+        </button>
+      </td>
+      {DOW_LIST.map((day) => {
+        const cell = resolveDayCell(agent, day, snapshot.supervisor_schedule);
+        return (
+          <td key={day} className="p-0.5 align-top">
+            <ShiftCellCard cell={cell} agent={agent} onOpen={onOpen} />
+          </td>
+        );
+      })}
+    </tr>
+  );
+}
+
+function SupervisorSection({
+  supervisors,
+  snapshot,
+  onOpen,
+}: {
+  supervisors: Agent[];
+  snapshot: Snapshot;
+  onOpen: (id: string) => void;
+}) {
+  if (!supervisors.length) return null;
+
+  return (
+    <>
+      <tr className="bg-muted/30">
+        <td
+          colSpan={DOW_LIST.length + 1}
+          className="sticky left-0 z-10 border-l-[3px] border-l-cyan-600 px-2 py-1.5 text-xs font-semibold tracking-tight"
+        >
+          Supervisors
+          <span className="ml-2 font-normal text-muted-foreground">
+            {supervisors.length} · Team 1–6
+          </span>
+        </td>
+      </tr>
+      {supervisors.map((agent) => (
+        <AgentRow
+          key={agent.id}
+          agent={agent}
+          snapshot={snapshot}
+          onOpen={onOpen}
+        />
+      ))}
+    </>
   );
 }
 
@@ -201,77 +263,33 @@ function TeamSection({
           </span>
         </td>
       </tr>
-      {agents.map((agent) => {
-        const opRole = agentOperationalRole(agent);
-        const rowAccent = opRole ? roleColor(opRole) : "#64748b";
-        const hours =
-          typeof agent.effective_hours_per_week === "number"
-            ? agent.effective_hours_per_week.toFixed(0)
-            : null;
-
-        return (
-          <tr key={agent.id} className="border-b border-border/40 hover:bg-muted/10">
-            <td className="sticky left-0 z-10 min-w-[160px] max-w-[160px] border-r bg-card px-2 py-2">
-              <button
-                type="button"
-                onClick={() => onOpen(agent.id)}
-                className="flex w-full items-center gap-2 text-left hover:opacity-90"
-              >
-                <div
-                  className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full border text-[9px] font-semibold"
-                  style={{ borderColor: rowAccent, color: rowAccent }}
-                >
-                  {agentInitials(agent)}
-                </div>
-                <div className="min-w-0 flex-1">
-                  <div className="truncate text-[11px] font-medium">
-                    {agentDisplayName(agent)}
-                  </div>
-                  <div className="truncate font-mono text-[9px] text-muted-foreground">
-                    {agent.id}
-                  </div>
-                  {hours && (
-                    <div className="num text-[9px] tabular-nums text-muted-foreground">
-                      {hours}h
-                    </div>
-                  )}
-                </div>
-              </button>
-            </td>
-            {DOW_LIST.map((day) => {
-              const cell = resolveDayCell(
-                agent,
-                day,
-                snapshot.supervisor_schedule,
-              );
-              return (
-                <td key={day} className="p-0.5 align-top">
-                  <ShiftCellCard cell={cell} agent={agent} onOpen={onOpen} />
-                </td>
-              );
-            })}
-          </tr>
-        );
-      })}
+      {agents.map((agent) => (
+        <AgentRow
+          key={agent.id}
+          agent={agent}
+          snapshot={snapshot}
+          onOpen={onOpen}
+        />
+      ))}
     </>
   );
 }
 
-/** Dialpad-style week grid: employees × Mon–Sun shift cards grouped by team. */
+/** Dialpad-style week grid: supervisors cascade at top, then flat or by team. */
 export function WeekScheduleGrid({
   snapshot,
   roleFilter = "All",
   positionFilter = "All",
   selectedDay,
   onDaySelect,
+  groupMode = "flat",
+  sortKey = "name",
+  sortDesc = false,
   className,
 }: WeekScheduleGridProps) {
   const [, setAgentId] = useQueryState("agent_id", parseAsString);
   const [, setTeam] = useQueryState("team", parseAsString);
   const [, setTeamRole] = useQueryState("team_role", parseAsString);
-
-  const [sortKey, setSortKey] = useState<WeekSortKey>("name");
-  const [sortDesc, setSortDesc] = useState(false);
 
   const openAgent = (id: string) => {
     void setTeam(null);
@@ -279,67 +297,57 @@ export function WeekScheduleGrid({
     void setAgentId(id);
   };
 
-  const toggleSort = (key: WeekSortKey) => {
-    if (sortKey === key) setSortDesc((d) => !d);
-    else {
-      setSortKey(key);
-      setSortDesc(false);
-    }
-  };
+  const supervisors = useMemo(
+    () =>
+      collectSupervisorsOrdered(
+        snapshot,
+        roleFilter,
+        positionFilter,
+        sortKey,
+        sortDesc,
+      ),
+    [snapshot, roleFilter, positionFilter, sortKey, sortDesc],
+  );
 
-  const { podLanes, supervisors } = useMemo(() => {
+  const flatAgents = useMemo(
+    () =>
+      collectFlatScheduleAgentsBelowSupervisors(
+        snapshot,
+        roleFilter,
+        positionFilter,
+        sortKey,
+        sortDesc,
+      ),
+    [snapshot, roleFilter, positionFilter, sortKey, sortDesc],
+  );
+
+  const podLanes = useMemo(() => {
     const agentById = new Map(snapshot.agents.map((a) => [a.id, a]));
-    const pods = podNamesOrdered(snapshot.pods).map((name, podIdx) => ({
+    return podNamesOrdered(snapshot.pods).map((name, podIdx) => ({
       name,
       podIdx,
       pod: snapshot.pods[name]!,
-      agents: sortAgentsInPod(
+      agents: sortScheduleAgents(
         (snapshot.pods[name]?.members ?? [])
           .map((id) => agentById.get(id))
           .filter((a): a is Agent => !!a)
+          .filter((a) => a.role !== "Supervisor")
           .filter((a) => agentMatchesFilters(a, roleFilter, positionFilter)),
         sortKey,
         sortDesc,
       ),
     }));
-
-    const sups = sortAgentsInPod(
-      snapshot.agents
-        .filter((a) => a.role === "Supervisor")
-        .filter((a) => agentMatchesFilters(a, roleFilter, positionFilter)),
-      sortKey,
-      sortDesc,
-    );
-
-    return { podLanes: pods, supervisors: sups };
   }, [snapshot, roleFilter, positionFilter, sortKey, sortDesc]);
 
   const totalRows =
-    podLanes.reduce((n, p) => n + p.agents.length, 0) + supervisors.length;
+    supervisors.length +
+    (groupMode === "flat"
+      ? flatAgents.length
+      : podLanes.reduce((n, p) => n + p.agents.length, 0));
 
   return (
     <div className={cn("overflow-hidden rounded-xl border border-border/70", className)}>
-      <div className="flex items-center justify-between gap-3 border-b border-border/60 bg-muted/20 px-3 py-2">
-        <div className="flex items-center gap-3 text-[10px] text-muted-foreground">
-          <SortButton
-            label="Name"
-            active={sortKey === "name"}
-            direction={sortDesc ? "desc" : "asc"}
-            onClick={() => toggleSort("name")}
-          />
-          <SortButton
-            label="Shift"
-            active={sortKey === "shift"}
-            direction={sortDesc ? "desc" : "asc"}
-            onClick={() => toggleSort("shift")}
-          />
-          <SortButton
-            label="Hours"
-            active={sortKey === "hours"}
-            direction={sortDesc ? "desc" : "asc"}
-            onClick={() => toggleSort("hours")}
-          />
-        </div>
+      <div className="flex items-center justify-end gap-3 border-b border-border/60 bg-muted/20 px-3 py-2">
         <span className="text-[10px] text-muted-foreground num tabular-nums">
           {totalRows} people
         </span>
@@ -402,25 +410,31 @@ export function WeekScheduleGrid({
               </tr>
             ) : (
               <>
-                {podLanes.map((lane) => (
-                  <TeamSection
-                    key={lane.name}
-                    teamName={lane.name}
-                    podIdx={lane.podIdx}
-                    supervisorId={lane.pod.supervisor_id}
-                    agents={lane.agents}
-                    snapshot={snapshot}
-                    onOpen={openAgent}
-                  />
-                ))}
-                {supervisors.length > 0 && (
-                  <TeamSection
-                    teamName="Supervisors"
-                    agents={supervisors}
-                    snapshot={snapshot}
-                    onOpen={openAgent}
-                  />
-                )}
+                <SupervisorSection
+                  supervisors={supervisors}
+                  snapshot={snapshot}
+                  onOpen={openAgent}
+                />
+                {groupMode === "flat"
+                  ? flatAgents.map((agent) => (
+                      <AgentRow
+                        key={agent.id}
+                        agent={agent}
+                        snapshot={snapshot}
+                        onOpen={openAgent}
+                      />
+                    ))
+                  : podLanes.map((lane) => (
+                      <TeamSection
+                        key={lane.name}
+                        teamName={lane.name}
+                        podIdx={lane.podIdx}
+                        supervisorId={lane.pod.supervisor_id}
+                        agents={lane.agents}
+                        snapshot={snapshot}
+                        onOpen={openAgent}
+                      />
+                    ))}
               </>
             )}
           </tbody>

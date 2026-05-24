@@ -12,7 +12,7 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import { formatClock12 } from "@/lib/compute/day-structure";
+import { formatClock24 } from "@/lib/compute/day-structure";
 
 interface ShapeChartProps {
   offered: number[];
@@ -52,7 +52,7 @@ function ShapeTooltip({ active, payload, label, metricMode }: ShapeTooltipProps)
 
   return (
     <div className="rounded-md border bg-popover px-2.5 py-1.5 text-xs shadow-md">
-      <div className="font-medium">{formatClock12(label)}</div>
+      <div className="font-medium">{formatClock24(label)}</div>
       {lines.map((line) => (
         <div key={line} className="text-muted-foreground">
           {line}

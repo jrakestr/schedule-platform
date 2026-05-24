@@ -15,7 +15,11 @@ export function parseClock(t: string): number | null {
 }
 
 /** Wall-clock label in 24-hour HH:MM (wraps past midnight). */
-export function formatClock24(minutes: number): string {
+export function formatClock24(minutesOrClock: number | string): string {
+  const minutes =
+    typeof minutesOrClock === "string"
+      ? (parseClock(minutesOrClock) ?? 0)
+      : minutesOrClock;
   const wrapped = ((minutes % 1440) + 1440) % 1440;
   const h = Math.floor(wrapped / 60);
   const min = wrapped % 60;
@@ -29,20 +33,6 @@ export function formatSegmentRange(startMin: number, endMin: number, kind: strin
 /** Segment hover label — clock window and block type only. */
 export function formatSegmentLabel(startMin: number, endMin: number, kind: string): string {
   return formatSegmentRange(startMin, endMin, kind);
-}
-
-/** 12-hour clock for chart tooltips (e.g. "2:00 PM"). */
-export function formatClock12(minutesOrClock: number | string): string {
-  const minutes =
-    typeof minutesOrClock === "string"
-      ? (parseClock(minutesOrClock) ?? 0)
-      : minutesOrClock;
-  const wrapped = ((minutes % 1440) + 1440) % 1440;
-  const h24 = Math.floor(wrapped / 60);
-  const min = wrapped % 60;
-  const period = h24 >= 12 ? "PM" : "AM";
-  const h12 = h24 % 12 || 12;
-  return `${h12}:${String(min).padStart(2, "0")} ${period}`;
 }
 
 /** Agent structure string → absolute-minute segments. */

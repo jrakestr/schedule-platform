@@ -3,6 +3,7 @@
 import { useMemo } from "react";
 import { AgentLink } from "@/components/agent/agent-link";
 import {
+  formatClock24,
   formatSegmentLabel,
   parseClock,
   structureToTimeline,
@@ -12,7 +13,12 @@ import {
   DOW_TO_IDX,
   podNamesOrdered,
   resolveDayCell,
+  sortScheduleAgents,
+  collectSupervisorsOrdered,
+  agentMatchesScheduleFilters,
   type DayShiftCell,
+  type WeekSortKey,
+  type WeekGroupMode,
 } from "@/lib/compute/week-schedule";
 import { segmentKindColor } from "@/lib/navigation/panel-params";
 import { cn } from "@/lib/utils";
@@ -38,6 +44,9 @@ interface IntradayGanttProps {
   day: DOW;
   roleFilter?: string;
   positionFilter?: string;
+  groupMode?: WeekGroupMode;
+  sortKey?: WeekSortKey;
+  sortDesc?: boolean;
   className?: string;
 }
 
@@ -53,10 +62,7 @@ function agentMatchesFilters(
   roleFilter: string,
   positionFilter: string,
 ): boolean {
-  const matchesRole = roleFilter === "All" || agent.role === roleFilter;
-  const matchesPosition =
-    positionFilter === "All" || agent.position === positionFilter;
-  return matchesRole && matchesPosition;
+  return agentMatchesScheduleFilters(agent, roleFilter, positionFilter);
 }
 
 function agentOnDay(
@@ -238,6 +244,9 @@ function buildLanes(
   day: DOW,
   roleFilter: string,
   positionFilter: string,
+  groupMode: WeekGroupMode,
+  sortKey: WeekSortKey,
+  sortDesc: boolean,
 ): GanttLane[] {
   const agentById = new Map(snapshot.agents.map((a) => [a.id, a]));
   const schedule = snapshot.supervisor_schedule;
@@ -246,18 +255,52 @@ function buildLanes(
   const showPods = roleFilter === "All" || roleFilter !== "Supervisor";
   const showSupervisors = roleFilter === "All" || roleFilter === "Supervisor";
 
+  if (showSupervisors) {
+    const supervisors = collectSupervisorsOrdered(
+      snapshot,
+      roleFilter,
+      positionFilter,
+      sortKey,
+      sortDesc,
+    );
+    if (supervisors.length > 0) {
+      lanes.push({
+        name: "Supervisors",
+        agents: supervisors,
+        kind: "supervisors",
+      });
+    }
+  }
+
+  if (groupMode === "flat" && showPods) {
+    const agents = sortScheduleAgents(
+      snapshot.agents
+        .filter((a) => a.role !== "Supervisor")
+        .filter((a) => agentMatchesFilters(a, roleFilter, positionFilter))
+        .filter((a) => agentOnDay(a, day, schedule)),
+      sortKey,
+      sortDesc,
+    );
+    if (agents.length > 0) {
+      lanes.push({ name: "On duty", agents, kind: "pod" });
+    }
+    return lanes;
+  }
+
   if (showPods) {
     for (const name of podNamesOrdered(snapshot.pods)) {
       const pod = snapshot.pods[name];
       if (!pod) continue;
-      const agents = (pod.members ?? [])
-        .map((id) => agentById.get(id))
-        .filter((a): a is Agent => !!a)
-        .filter((a) => agentMatchesFilters(a, roleFilter, positionFilter))
-        .filter((a) => agentOnDay(a, day, schedule))
-        .sort((a, b) =>
-          (a.name?.trim() || a.id).localeCompare(b.name?.trim() || b.id),
-        );
+      const agents = sortScheduleAgents(
+        (pod.members ?? [])
+          .map((id) => agentById.get(id))
+          .filter((a): a is Agent => !!a)
+          .filter((a) => a.role !== "Supervisor")
+          .filter((a) => agentMatchesFilters(a, roleFilter, positionFilter))
+          .filter((a) => agentOnDay(a, day, schedule)),
+        sortKey,
+        sortDesc,
+      );
       if (agents.length > 0) {
         lanes.push({
           name,
@@ -266,22 +309,6 @@ function buildLanes(
           kind: "pod",
         });
       }
-    }
-  }
-
-  if (showSupervisors) {
-    const supervisors = snapshot.agents
-      .filter((a) => a.role === "Supervisor")
-      .filter((a) => agentMatchesFilters(a, roleFilter, positionFilter))
-      .filter((a) => agentOnDay(a, day, schedule))
-      .sort((a, b) => a.id.localeCompare(b.id));
-
-    if (supervisors.length > 0) {
-      lanes.push({
-        name: "Supervisors",
-        agents: supervisors,
-        kind: "supervisors",
-      });
     }
   }
 
@@ -308,13 +335,25 @@ export function IntradayGantt({
   day,
   roleFilter = "All",
   positionFilter = "All",
+  groupMode = "flat",
+  sortKey = "name",
+  sortDesc = false,
   className,
 }: IntradayGanttProps) {
   const schedule = snapshot.supervisor_schedule;
 
   const lanes = useMemo(
-    () => buildLanes(snapshot, day, roleFilter, positionFilter),
-    [snapshot, day, roleFilter, positionFilter],
+    () =>
+      buildLanes(
+        snapshot,
+        day,
+        roleFilter,
+        positionFilter,
+        groupMode,
+        sortKey,
+        sortDesc,
+      ),
+    [snapshot, day, roleFilter, positionFilter, groupMode, sortKey, sortDesc],
   );
 
   const hourLabels = Array.from(
@@ -358,7 +397,7 @@ export function IntradayGantt({
                     className="absolute top-1.5 num text-xs tabular-nums text-muted-foreground"
                     style={{ left: x + 4 }}
                   >
-                    {String(h).padStart(2, "0")}
+                    {formatClock24(h * 60)}
                   </span>
                 );
               })}
@@ -383,26 +422,28 @@ export function IntradayGantt({
           ) : (
             lanes.map((lane) => (
               <div key={lane.name}>
-                <div
-                  className="flex items-center border-b border-border/50 bg-muted/35"
-                  style={{ height: POD_HEAD_H }}
-                >
+                {groupMode === "team" || lane.kind === "supervisors" ? (
                   <div
-                    className="sticky left-0 z-10 shrink-0 border-r bg-muted/35 px-3 text-sm font-semibold"
-                    style={{ width: LABEL_W }}
+                    className="flex items-center border-b border-border/50 bg-muted/35"
+                    style={{ height: POD_HEAD_H }}
                   >
-                    {lane.name}
-                    {lane.supervisorId ? (
-                      <span className="ml-1.5 font-normal text-muted-foreground">
-                        · {lane.supervisorId}
-                      </span>
-                    ) : null}
+                    <div
+                      className="sticky left-0 z-10 shrink-0 border-r bg-muted/35 px-3 text-sm font-semibold"
+                      style={{ width: LABEL_W }}
+                    >
+                      {lane.name}
+                      {lane.supervisorId ? (
+                        <span className="ml-1.5 font-normal text-muted-foreground">
+                          · {lane.supervisorId}
+                        </span>
+                      ) : null}
+                    </div>
+                    <div
+                      className="shrink-0 bg-muted/20"
+                      style={{ width: trackW, height: 1 }}
+                    />
                   </div>
-                  <div
-                    className="shrink-0 bg-muted/20"
-                    style={{ width: trackW, height: 1 }}
-                  />
-                </div>
+                ) : null}
 
                 {lane.agents.map((agent) => {
                   const segments = agentTimelineSegments(agent, day, schedule);

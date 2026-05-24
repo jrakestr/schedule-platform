@@ -14,7 +14,7 @@ import type {
   DistributionViewMode,
   HourDistributionRow,
 } from "@/lib/compute/distribution";
-import { formatClock12 } from "@/lib/compute/day-structure";
+import { formatClock24 } from "@/lib/compute/day-structure";
 import { fmtDuration } from "@/lib/utils";
 
 const CHART_HOUR_START = 7;
@@ -66,7 +66,7 @@ function CompareTooltip({ active, payload, label }: CompareTooltipProps) {
 
   return (
     <div className="rounded-md border bg-popover px-2.5 py-1.5 text-xs shadow-md">
-      <div className="font-medium">{formatClock12(label)}</div>
+      <div className="font-medium">{formatClock24(label)}</div>
       <div className="text-muted-foreground">
         {Math.round(calls)} calls · {Math.round(abandoned)} abandoned
       </div>
@@ -168,7 +168,7 @@ export function ValidationCompareChart({
             <XAxis
               dataKey="hour"
               tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }}
-              tickFormatter={(v) => formatClock12(String(v))}
+              tickFormatter={(v) => formatClock24(String(v))}
               interval={1}
               angle={-45}
               textAnchor="end"

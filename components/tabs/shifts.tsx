@@ -2,10 +2,11 @@
 
 import { useMemo, useState } from "react";
 import { useQueryState, parseAsString } from "nuqs";
-import { Clock, Users } from "lucide-react";
+import { ArrowLeft, Clock, Users } from "lucide-react";
 import { AgentLink } from "@/components/agent/agent-link";
 import { DayStructureBar } from "@/components/agent/day-structure-bar";
 import { IntradayGantt } from "@/components/schedule/intraday-gantt";
+import { ScheduleViewControls } from "@/components/schedule/schedule-view-controls";
 import { StaffingStrip } from "@/components/schedule/staffing-strip";
 import { WeekScheduleGrid } from "@/components/schedule/week-schedule-grid";
 import { DayTabs } from "@/components/shared/day-tabs";
@@ -35,6 +36,11 @@ import {
   roleColor,
   shiftColor,
 } from "@/lib/compute/colors";
+import {
+  sortScheduleAgents,
+  type WeekGroupMode,
+  type WeekSortKey,
+} from "@/lib/compute/week-schedule";
 import { cn, f1 } from "@/lib/utils";
 import type { Agent, DOW, ShiftCatalogEntry, Snapshot } from "@/lib/data/types";
 
@@ -152,11 +158,15 @@ function PersonShiftCard({
 function ByShiftView({
   assignedByShift,
   shiftRows,
+  sortKey,
+  sortDesc,
   onOpenShift,
   onOpenAgent,
 }: {
   assignedByShift: Record<string, AssignedAgent[]>;
   shiftRows: ShiftCatalogEntry[];
+  sortKey: WeekSortKey;
+  sortDesc: boolean;
   onOpenShift: (shiftId: string) => void;
   onOpenAgent: (id: string) => void;
 }) {
@@ -171,7 +181,11 @@ function ByShiftView({
   return (
     <div className="space-y-4">
       {shiftRows.map((shift) => {
-        const agents = assignedByShift[shift.shift_id] ?? [];
+        const agents = sortScheduleAgents(
+          assignedByShift[shift.shift_id] ?? [],
+          sortKey,
+          sortDesc,
+        );
         const color = shiftColor(shift.shift_id);
         return (
           <div
@@ -352,6 +366,9 @@ export function ShiftsTab({ snapshot, leadPct }: ShiftsTabProps) {
   const [selectedDay, setSelectedDay] = useState<DOW>("Mon");
   const [roleFilter, setRoleFilter] = useState<RoleFilter>("All");
   const [positionFilter, setPositionFilter] = useState<PositionFilter>("All");
+  const [groupMode, setGroupMode] = useState<WeekGroupMode>("flat");
+  const [sortKey, setSortKey] = useState<WeekSortKey>("start");
+  const [sortDesc, setSortDesc] = useState(false);
   const [dialogShiftId, setDialogShiftId] = useState<string | null>(null);
   const [, setAgentId] = useQueryState("agent_id", parseAsString);
 
@@ -387,10 +404,28 @@ export function ShiftsTab({ snapshot, leadPct }: ShiftsTabProps) {
     void setAgentId(id);
   };
 
+  const switchView = (next: ShiftView) => {
+    setView(next);
+    if (next !== "by-shift") {
+      setDialogShiftId(null);
+    }
+  };
+
+  const handleSortChange = (key: WeekSortKey) => {
+    if (sortKey === key) {
+      setSortDesc((d) => !d);
+      return;
+    }
+    setSortKey(key);
+    setSortDesc(false);
+  };
+
   const handleDaySelect = (day: DOW) => {
     setSelectedDay(day);
     setView("day");
   };
+
+  const showScheduleControls = view === "week" || view === "day";
 
   return (
     <div className="space-y-4">
@@ -403,28 +438,43 @@ export function ShiftsTab({ snapshot, leadPct }: ShiftsTabProps) {
         contentClassName={view === "day" ? "p-2 sm:p-3" : undefined}
         toolbar={
           <div className="flex flex-wrap items-center gap-2">
+            {view === "day" && (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-7 text-xs"
+                onClick={() => switchView("week")}
+              >
+                <ArrowLeft className="mr-1 h-3.5 w-3.5" />
+                Week
+              </Button>
+            )}
             <div className="flex rounded-md border border-border/60 p-0.5">
               <Button
+                type="button"
                 variant={view === "week" ? "default" : "ghost"}
                 size="sm"
                 className="h-7 text-xs"
-                onClick={() => setView("week")}
+                onClick={() => switchView("week")}
               >
                 Week
               </Button>
               <Button
+                type="button"
                 variant={view === "day" ? "default" : "ghost"}
                 size="sm"
                 className="h-7 text-xs"
-                onClick={() => setView("day")}
+                onClick={() => switchView("day")}
               >
                 Day
               </Button>
               <Button
+                type="button"
                 variant={view === "by-shift" ? "default" : "ghost"}
                 size="sm"
                 className="h-7 text-xs"
-                onClick={() => setView("by-shift")}
+                onClick={() => switchView("by-shift")}
               >
                 By Shift
               </Button>
@@ -442,6 +492,7 @@ export function ShiftsTab({ snapshot, leadPct }: ShiftsTabProps) {
           {ROLES.map((r) => (
             <Button
               key={r}
+              type="button"
               variant={roleFilter === r ? "default" : "outline"}
               size="sm"
               className="h-7 text-xs"
@@ -461,6 +512,7 @@ export function ShiftsTab({ snapshot, leadPct }: ShiftsTabProps) {
               {POSITIONS.map((p) => (
                 <Button
                   key={p}
+                  type="button"
                   variant={positionFilter === p ? "default" : "outline"}
                   size="sm"
                   className="h-7 text-xs"
@@ -473,6 +525,18 @@ export function ShiftsTab({ snapshot, leadPct }: ShiftsTabProps) {
           )}
         </div>
 
+        {showScheduleControls && (
+          <div className="mb-3">
+            <ScheduleViewControls
+              groupMode={groupMode}
+              onGroupModeChange={setGroupMode}
+              sortKey={sortKey}
+              sortDesc={sortDesc}
+              onSortChange={handleSortChange}
+            />
+          </div>
+        )}
+
         {view === "week" && (
           <WeekScheduleGrid
             snapshot={snapshot}
@@ -480,6 +544,9 @@ export function ShiftsTab({ snapshot, leadPct }: ShiftsTabProps) {
             positionFilter={positionFilter}
             selectedDay={selectedDay}
             onDaySelect={handleDaySelect}
+            groupMode={groupMode}
+            sortKey={sortKey}
+            sortDesc={sortDesc}
           />
         )}
 
@@ -495,18 +562,35 @@ export function ShiftsTab({ snapshot, leadPct }: ShiftsTabProps) {
               day={selectedDay}
               roleFilter={roleFilter}
               positionFilter={positionFilter}
+              groupMode={groupMode}
+              sortKey={sortKey}
+              sortDesc={sortDesc}
               className="min-h-0 flex-1"
             />
           </div>
         )}
 
         {view === "by-shift" && (
-          <ByShiftView
-            assignedByShift={assignedByShift}
-            shiftRows={activeShiftRows}
-            onOpenShift={setDialogShiftId}
-            onOpenAgent={openAgent}
-          />
+          <>
+            <div className="mb-3">
+              <ScheduleViewControls
+                groupMode={groupMode}
+                onGroupModeChange={setGroupMode}
+                sortKey={sortKey}
+                sortDesc={sortDesc}
+                onSortChange={handleSortChange}
+                showGroupToggle={false}
+              />
+            </div>
+            <ByShiftView
+              assignedByShift={assignedByShift}
+              shiftRows={activeShiftRows}
+              sortKey={sortKey}
+              sortDesc={sortDesc}
+              onOpenShift={setDialogShiftId}
+              onOpenAgent={openAgent}
+            />
+          </>
         )}
       </SectionCard>
 

@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { getIntervalSeries } from "@/lib/compute/distribution";
-import { formatClock12 } from "@/lib/compute/day-structure";
+import { formatClock24 } from "@/lib/compute/day-structure";
 import { cn } from "@/lib/utils";
 import type { DOW, Snapshot } from "@/lib/data/types";
 
@@ -111,7 +111,7 @@ export function StaffingStrip({
       {activeRow && (
         <div className="rounded-lg border border-border bg-card p-3 shadow-sm">
           <div className="mb-2 text-sm font-semibold">
-            {day} · {formatClock12(activeRow.hour * 60)}
+            {day} · {formatClock24(activeRow.hour * 60)}
           </div>
           <table className="w-full text-sm">
             <thead>
@@ -131,7 +131,7 @@ export function StaffingStrip({
                 return (
                   <tr key={half} className="border-b border-border/40">
                     <td className="py-1.5 font-mono">
-                      {formatClock12(activeRow.hour * 60 + half * 30)}
+                      {formatClock24(activeRow.hour * 60 + half * 30)}
                     </td>
                     <td className="py-1.5 text-right num tabular-nums">{prop.toFixed(1)}</td>
                     <td className="py-1.5 text-right num tabular-nums">{req.toFixed(1)}</td>

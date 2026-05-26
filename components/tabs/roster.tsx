@@ -204,38 +204,14 @@ export function RosterTab({ snapshot }: RosterTabProps) {
         cell: ({ row }) => {
           const v = row.original.shift;
           if (!v) return null;
-          const isSplitIncentive =
-            v.startsWith("WKND_") ||
-            v.startsWith("OVERNIGHT_") ||
-            v.startsWith("TWILIGHT_") ||
-            v.includes("SPLIT");
-
           return (
-            <div className="inline-flex items-center gap-2 flex-wrap">
-              <span className="font-mono text-xs inline-flex items-center gap-1.5">
-                <span
-                  className="inline-block w-2 h-2 rounded-sm"
-                  style={{ background: shiftColor(v) }}
-                />
-                {v}
-              </span>
-              {isSplitIncentive && (
-                <div className="inline-flex gap-1">
-                  <Badge
-                    variant="outline"
-                    className="text-[9px] h-4 px-1 bg-emerald-50 dark:bg-emerald-950/20 text-emerald-700 dark:text-emerald-400 border-emerald-200 dark:border-emerald-900/40"
-                  >
-                    WFH
-                  </Badge>
-                  <Badge
-                    variant="outline"
-                    className="text-[9px] h-4 px-1 bg-amber-50 dark:bg-amber-950/20 text-amber-700 dark:text-amber-400 border-amber-200 dark:border-amber-900/40"
-                  >
-                    +$20/Day
-                  </Badge>
-                </div>
-              )}
-            </div>
+            <span className="font-mono text-xs inline-flex items-center gap-1.5">
+              <span
+                className="inline-block w-2 h-2 rounded-sm"
+                style={{ background: shiftColor(v) }}
+              />
+              {v}
+            </span>
           );
         },
       },

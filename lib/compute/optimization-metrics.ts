@@ -47,10 +47,6 @@ function agentWeeklyCost(agent: Agent): number {
   );
 
   let weeklyCost = hoursPerWeek * rate;
-  const shiftId = agent.shift_id || "";
-  if (shiftId.startsWith("SPLIT") || shiftId.includes("SPLIT")) {
-    weeklyCost += 100;
-  }
   return weeklyCost;
 }
 

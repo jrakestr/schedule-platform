@@ -94,7 +94,6 @@ export function OptimizerStatusBanner({ state, errorCode, errorMessage, onRetry 
 interface OptimizerTabProps {
   snapshot: Snapshot;
   baselineSnapshot: Snapshot;
-  onUpdateSnapshot: (newSnapshot: Snapshot) => void;
   optimizations: OptimizationMeta[];
 }
 
@@ -468,7 +467,7 @@ function CompareRow({ icon, label, children }: { icon: ReactNode; label: string;
   );
 }
 
-export function OptimizerTab({ snapshot, baselineSnapshot, onUpdateSnapshot, optimizations }: OptimizerTabProps) {
+export function OptimizerTab({ snapshot, baselineSnapshot, optimizations }: OptimizerTabProps) {
   const [isSolving, setIsSolving] = useState(false);
   const [errorDetails, setErrorDetails] = useState<string | null>(null);
   const [runName, setRunName] = useState("");
@@ -774,6 +773,7 @@ export function OptimizerTab({ snapshot, baselineSnapshot, onUpdateSnapshot, opt
             setRunName("");
             setNotes("");
             await setOptId(runId);
+            router.refresh();
             setIsSolving(false);
           } else if (run.status === "failed") {
             setRunState("failed");
@@ -1291,6 +1291,7 @@ export function OptimizerTab({ snapshot, baselineSnapshot, onUpdateSnapshot, opt
                             className="h-7 px-2.5 text-xs"
                             onClick={async () => {
                               await setOptId(isActive ? "" : opt.id);
+                              router.refresh();
                             }}
                           >
                             {isActive ? "Deselect" : "Overlay"}

@@ -1,5 +1,5 @@
 import { cacheLife, cacheTag } from "next/cache";
-import { createReadClient } from "@/lib/supabase/server";
+import { createReadClient, createWriteClient } from "@/lib/supabase/server";
 import { normalizeSnapshotPods } from "@/lib/data/normalize-snapshot";
 import type { Snapshot } from "@/lib/data/types";
 
@@ -51,34 +51,28 @@ async function readOptimizationFromSupabase(optId: string): Promise<SnapshotReco
     !!process.env.SUPABASE_SERVICE_ROLE_KEY;
   if (!url || !hasKey) return null;
 
-  const supabase = createReadClient();
+  // Prefer service role on the server — get_optimization payload reads are server-only.
+  const supabase =
+    process.env.SUPABASE_SERVICE_ROLE_KEY != null
+      ? createWriteClient()
+      : createReadClient();
   const { data, error } = await supabase.rpc("get_optimization", { target_id: optId });
 
   if (error) {
     console.error(`Failed to load optimization ${optId}: ${error.message}`);
     return null;
   }
-  if (!data) return null;
+  if (data == null) return null;
 
-  // The RPC shape is uncertain across migrations: it may return
-  //   Snapshot                           (bare payload)
-  //   { payload: Snapshot, taken_at? }   (row-wrapped, like get_baseline_platform_snapshot)
-  //   [{ payload: Snapshot, ... }]       (array of rows)
-  // Probe defensively and validate that we ended up with something
-  // shaped like a Snapshot before returning — silently producing
-  // `undefined.meta` deep in the UI is worse than 404-falling back to baseline.
-  const row: any = Array.isArray(data) ? data[0] : data;
-  if (!row) return null;
-  const payload = (row.payload ?? row) as Snapshot;
-  const takenAt: string =
-    row.taken_at ?? row.created_at ?? new Date().toISOString();
+  // get_optimization returns the snapshot jsonb payload directly.
+  const payload = (Array.isArray(data) ? data[0] : data) as Snapshot;
   if (!payload || typeof payload !== "object" || !("meta" in payload)) {
     console.error(
       `get_optimization returned an unexpected shape for ${optId}; falling back.`,
     );
     return null;
   }
-  return { payload, taken_at: takenAt };
+  return { payload, taken_at: new Date().toISOString() };
 }
 
 // Local-file fallback. Used in dev (no DB needed to run `next dev`) and as a

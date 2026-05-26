@@ -1,12 +1,11 @@
 import { DOW_LIST, type DOW, type Snapshot } from "@/lib/data/types";
 import {
+  activeScheduleShiftTypes,
+  activeWeeklyPatternRows,
   classifyScheduleShiftType,
-  DAILY_SUMMARY_ROW_LABELS,
+  DAILY_FOOTER_ROWS,
   emptyDowCounts,
   emptyShiftTypeCounts,
-  isEightHourSplitType,
-  isNonStraightEightHourType,
-  isSplitShiftType,
   resolveCatalogEntry,
   SCHEDULE_SHIFT_TYPES,
   type DailySummaryRowKey,
@@ -14,14 +13,12 @@ import {
   weeklyPatternFromOffPair,
   WEEKLY_PATTERN_ROWS,
   type WeeklyPatternKey,
+  type WeeklyPatternRow,
 } from "@/lib/compute/schedule-shift-types";
 
 export type DailyShiftGrid = Record<ScheduleShiftTypeKey, Record<DOW, number>>;
 
 export interface DailySummaryRows {
-  eightHourSplitTotal: Record<DOW, number>;
-  totalSplitShifts: Record<DOW, number>;
-  totalNonStraightEightHour: Record<DOW, number>;
   totalShifts: Record<DOW, number>;
   totalCubiclesRequired: Record<DOW, number>;
 }
@@ -32,7 +29,8 @@ export interface DailyShiftTable {
   weekTotals: Record<ScheduleShiftTypeKey, number>;
   weekPct: Record<ScheduleShiftTypeKey, number>;
   summaryWeekTotals: Record<DailySummaryRowKey, number>;
-  summaryWeekPct: Record<Exclude<DailySummaryRowKey, "totalCubiclesRequired">, number>;
+  summaryWeekPct: Record<"totalShifts", number>;
+  activeShiftTypes: ScheduleShiftTypeKey[];
 }
 
 export type WeeklyPatternGrid = Record<
@@ -46,6 +44,8 @@ export interface WeeklyPatternTable {
   columnTotals: Record<ScheduleShiftTypeKey, number>;
   grandTotal: number;
   rowPct: Record<WeeklyPatternKey, Record<ScheduleShiftTypeKey, number>>;
+  activeShiftTypes: ScheduleShiftTypeKey[];
+  activePatternRows: WeeklyPatternRow[];
 }
 
 export interface ShiftScheduleSummary {
@@ -88,28 +88,21 @@ function initWeeklyGrid(): WeeklyPatternGrid {
   return grid;
 }
 
-function deriveDailySummary(byShiftType: DailyShiftGrid): Omit<DailySummaryRows, "totalCubiclesRequired"> {
-  const eightHourSplitTotal = emptyDowCounts();
-  const totalSplitShifts = emptyDowCounts();
-  const totalNonStraightEightHour = emptyDowCounts();
+function deriveTotalShifts(byShiftType: DailyShiftGrid): Record<DOW, number> {
   const totalShifts = emptyDowCounts();
-
   for (const day of DOW_LIST) {
     for (const key of SCHEDULE_SHIFT_TYPES) {
-      const count = byShiftType[key][day];
-      totalShifts[day] += count;
-      if (isEightHourSplitType(key)) eightHourSplitTotal[day] += count;
-      if (isSplitShiftType(key)) totalSplitShifts[day] += count;
-      if (isNonStraightEightHourType(key)) totalNonStraightEightHour[day] += count;
+      totalShifts[day] += byShiftType[key][day];
     }
   }
-
-  return { eightHourSplitTotal, totalSplitShifts, totalNonStraightEightHour, totalShifts };
+  return totalShifts;
 }
 
 export function buildShiftScheduleSummary(snapshot: Snapshot): ShiftScheduleSummary {
   const catalog = snapshot.shift_catalog ?? [];
-  const agents = snapshot.agents ?? [];
+  // Supervisors are baseline-fixed (not part of CP-SAT overlays) — exclude
+  // them so Total shifts reflects only roster slots the optimizer decides.
+  const agents = (snapshot.agents ?? []).filter((a) => a.role !== "Supervisor");
   const byShiftType = initDailyGrid();
   const byPattern = initWeeklyGrid();
 
@@ -127,7 +120,7 @@ export function buildShiftScheduleSummary(snapshot: Snapshot): ShiftScheduleSumm
     }
   }
 
-  const derived = deriveDailySummary(byShiftType);
+  const totalShifts = deriveTotalShifts(byShiftType);
   const totalCubiclesRequired = buildDailyCubiclePeaks(snapshot);
 
   const weekTotals = {} as Record<ScheduleShiftTypeKey, number>;
@@ -142,21 +135,14 @@ export function buildShiftScheduleSummary(snapshot: Snapshot): ShiftScheduleSumm
     weekPct[key] = pctOfTotal(weekTotals[key], shiftTypeWeekGrandTotal);
   }
 
+  const activeShiftTypes = activeScheduleShiftTypes(weekTotals);
+
   const summaryWeekTotals = {
-    eightHourSplitTotal: sumDow(derived.eightHourSplitTotal),
-    totalSplitShifts: sumDow(derived.totalSplitShifts),
-    totalNonStraightEightHour: sumDow(derived.totalNonStraightEightHour),
-    totalShifts: sumDow(derived.totalShifts),
+    totalShifts: sumDow(totalShifts),
     totalCubiclesRequired: sumDow(totalCubiclesRequired),
-  } as Record<DailySummaryRowKey, number>;
+  };
 
   const summaryWeekPct = {
-    eightHourSplitTotal: pctOfTotal(summaryWeekTotals.eightHourSplitTotal, summaryWeekTotals.totalShifts),
-    totalSplitShifts: pctOfTotal(summaryWeekTotals.totalSplitShifts, summaryWeekTotals.totalShifts),
-    totalNonStraightEightHour: pctOfTotal(
-      summaryWeekTotals.totalNonStraightEightHour,
-      summaryWeekTotals.totalShifts,
-    ),
     totalShifts: summaryWeekTotals.totalShifts > 0 ? 100 : 0,
   };
 
@@ -187,14 +173,17 @@ export function buildShiftScheduleSummary(snapshot: Snapshot): ShiftScheduleSumm
     }
   }
 
+  const activePatternRows = activeWeeklyPatternRows(rowTotals);
+
   return {
     daily: {
       byShiftType,
-      summary: { ...derived, totalCubiclesRequired },
+      summary: { totalShifts, totalCubiclesRequired },
       weekTotals,
       weekPct,
       summaryWeekTotals,
       summaryWeekPct,
+      activeShiftTypes,
     },
     weeklyPatterns: {
       byPattern,
@@ -202,6 +191,8 @@ export function buildShiftScheduleSummary(snapshot: Snapshot): ShiftScheduleSumm
       columnTotals,
       grandTotal,
       rowPct,
+      activeShiftTypes,
+      activePatternRows,
     },
   };
 }
@@ -263,18 +254,6 @@ export function diffShiftScheduleSummaries(
   );
 
   const summary = {
-    eightHourSplitTotal: diffDowRows(
-      baseline.daily.summary.eightHourSplitTotal,
-      proposed.daily.summary.eightHourSplitTotal,
-    ),
-    totalSplitShifts: diffDowRows(
-      baseline.daily.summary.totalSplitShifts,
-      proposed.daily.summary.totalSplitShifts,
-    ),
-    totalNonStraightEightHour: diffDowRows(
-      baseline.daily.summary.totalNonStraightEightHour,
-      proposed.daily.summary.totalNonStraightEightHour,
-    ),
     totalShifts: diffDowRows(
       baseline.daily.summary.totalShifts,
       proposed.daily.summary.totalShifts,
@@ -290,11 +269,13 @@ export function diffShiftScheduleSummaries(
     weekTotals[key] = proposed.daily.weekTotals[key] - baseline.daily.weekTotals[key];
   }
 
-  const summaryWeekTotals = {} as Record<DailySummaryRowKey, number>;
-  for (const key of Object.keys(DAILY_SUMMARY_ROW_LABELS) as DailySummaryRowKey[]) {
-    summaryWeekTotals[key] =
-      proposed.daily.summaryWeekTotals[key] - baseline.daily.summaryWeekTotals[key];
-  }
+  const summaryWeekTotals = {
+    totalShifts:
+      proposed.daily.summaryWeekTotals.totalShifts - baseline.daily.summaryWeekTotals.totalShifts,
+    totalCubiclesRequired:
+      proposed.daily.summaryWeekTotals.totalCubiclesRequired -
+      baseline.daily.summaryWeekTotals.totalCubiclesRequired,
+  };
 
   const rowTotals = {} as Record<WeeklyPatternKey, number>;
   for (const row of WEEKLY_PATTERN_ROWS) {
@@ -327,4 +308,4 @@ export function diffShiftScheduleSummaries(
   };
 }
 
-export { DAILY_SUMMARY_ROW_LABELS };
+export { DAILY_FOOTER_ROWS, DAILY_SUMMARY_ROW_LABELS } from "@/lib/compute/schedule-shift-types";

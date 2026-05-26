@@ -147,60 +147,120 @@ export function OptimizationResults({
             ? `${comparison.agentChanges.length} agent${comparison.agentChanges.length === 1 ? "" : "s"} with a shift or off-day change.`
             : "No shift or off-day changes from baseline."
         }
+        contentClassName="px-3 sm:px-5"
       >
         {comparison.agentChanges.length === 0 ? (
           <p className="text-xs text-muted-foreground py-2">
             Proposed roster matches baseline shift assignments.
           </p>
         ) : (
-          <div className="rounded-md border max-h-96 overflow-y-auto">
-            <Table>
-              <TableHeader className="sticky top-0 z-10 bg-background shadow-sm">
-                <TableRow className="bg-muted/40 hover:bg-muted/40">
-                  {/* Applying sticky positions directly to TableHeads to ensure consistent cross-browser performance */}
-                  <TableHead className="text-xs sticky top-0 bg-muted/40">Agent</TableHead>
-                  <TableHead className="text-xs sticky top-0 bg-muted/40">Baseline Shift</TableHead>
-                  <TableHead className="text-xs sticky top-0 bg-muted/40">Proposed Shift</TableHead>
-                  <TableHead className="text-xs w-16 text-right sticky top-0 bg-muted/40">Δ</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {comparison.agentChanges.map((row) => (
-                  <TableRow key={row.agentId}>
-                    <TableCell className="text-xs">
-                      <div className="font-medium">{row.agentName}</div>
-                      <div className="text-[10px] text-muted-foreground">{row.role}</div>
-                      {row.daysChanged && (
-                        <div className="text-[10px] text-muted-foreground mt-0.5">
-                          Days: {formatDays(row.baselineWorksDays)} → {formatDays(row.proposedWorksDays)}
-                        </div>
-                      )}
-                    </TableCell>
-                    <TableCell className="text-xs">
-                      <div>{row.baselineShiftLabel}</div>
-                      <div className="text-[10px] text-muted-foreground font-mono">{row.baselineShiftId}</div>
-                    </TableCell>
-                    <TableCell className="text-xs">
-                      <div>{row.proposedShiftLabel}</div>
-                      <div className="text-[10px] text-muted-foreground font-mono">{row.proposedShiftId}</div>
-                    </TableCell>
-                    <TableCell className="text-xs text-right">
-                      <Badge
-                        variant="outline"
-                        className="text-[10px] h-5 font-semibold bg-orange-50 text-orange-800 border-orange-200 dark:bg-orange-950/30 dark:text-orange-300 dark:border-orange-900/50"
-                      >
-                        {row.shiftChanged && row.daysChanged
-                          ? "shift+days"
-                          : row.shiftChanged
-                            ? "shift"
-                            : "days"}
-                      </Badge>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
+          <>
+            <div className="space-y-3 md:hidden">
+              {comparison.agentChanges.map((row) => (
+                <div
+                  key={row.agentId}
+                  className="rounded-lg border border-border/70 bg-card p-3 shadow-sm"
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <div className="text-sm font-medium leading-snug">{row.agentName}</div>
+                      <div className="text-[11px] text-muted-foreground">{row.role}</div>
+                    </div>
+                    <Badge
+                      variant="outline"
+                      className="shrink-0 text-[10px] h-5 font-semibold bg-orange-50 text-orange-800 border-orange-200 dark:bg-orange-950/30 dark:text-orange-300 dark:border-orange-900/50"
+                    >
+                      {row.shiftChanged && row.daysChanged
+                        ? "shift+days"
+                        : row.shiftChanged
+                          ? "shift"
+                          : "days"}
+                    </Badge>
+                  </div>
+                  <div className="mt-3 grid grid-cols-1 gap-2 text-[11px]">
+                    <div className="rounded-md bg-muted/30 px-2.5 py-2">
+                      <div className="text-[10px] uppercase tracking-wide text-muted-foreground">
+                        Baseline
+                      </div>
+                      <div className="mt-0.5 font-medium">{row.baselineShiftLabel}</div>
+                      <div className="font-mono text-[10px] text-muted-foreground">
+                        {row.baselineShiftId}
+                      </div>
+                    </div>
+                    <div className="rounded-md bg-muted/30 px-2.5 py-2">
+                      <div className="text-[10px] uppercase tracking-wide text-muted-foreground">
+                        Proposed
+                      </div>
+                      <div className="mt-0.5 font-medium">{row.proposedShiftLabel}</div>
+                      <div className="font-mono text-[10px] text-muted-foreground">
+                        {row.proposedShiftId}
+                      </div>
+                    </div>
+                  </div>
+                  {row.daysChanged && (
+                    <div className="mt-2 text-[10px] leading-relaxed text-muted-foreground">
+                      Days: {formatDays(row.baselineWorksDays)} → {formatDays(row.proposedWorksDays)}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+
+            <div className="hidden md:block">
+              <div className="rounded-md border max-h-96 overflow-y-auto">
+                <Table>
+                  <TableHeader className="sticky top-0 z-10 bg-background shadow-sm">
+                    <TableRow className="bg-muted/40 hover:bg-muted/40">
+                      <TableHead className="text-xs sticky top-0 bg-muted/40">Agent</TableHead>
+                      <TableHead className="text-xs sticky top-0 bg-muted/40">Baseline Shift</TableHead>
+                      <TableHead className="text-xs sticky top-0 bg-muted/40">Proposed Shift</TableHead>
+                      <TableHead className="text-xs w-16 text-right sticky top-0 bg-muted/40">Δ</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {comparison.agentChanges.map((row) => (
+                      <TableRow key={row.agentId}>
+                        <TableCell className="text-xs">
+                          <div className="font-medium">{row.agentName}</div>
+                          <div className="text-[10px] text-muted-foreground">{row.role}</div>
+                          {row.daysChanged && (
+                            <div className="text-[10px] text-muted-foreground mt-0.5">
+                              Days: {formatDays(row.baselineWorksDays)} →{" "}
+                              {formatDays(row.proposedWorksDays)}
+                            </div>
+                          )}
+                        </TableCell>
+                        <TableCell className="text-xs">
+                          <div>{row.baselineShiftLabel}</div>
+                          <div className="text-[10px] text-muted-foreground font-mono">
+                            {row.baselineShiftId}
+                          </div>
+                        </TableCell>
+                        <TableCell className="text-xs">
+                          <div>{row.proposedShiftLabel}</div>
+                          <div className="text-[10px] text-muted-foreground font-mono">
+                            {row.proposedShiftId}
+                          </div>
+                        </TableCell>
+                        <TableCell className="text-xs text-right">
+                          <Badge
+                            variant="outline"
+                            className="text-[10px] h-5 font-semibold bg-orange-50 text-orange-800 border-orange-200 dark:bg-orange-950/30 dark:text-orange-300 dark:border-orange-900/50"
+                          >
+                            {row.shiftChanged && row.daysChanged
+                              ? "shift+days"
+                              : row.shiftChanged
+                                ? "shift"
+                                : "days"}
+                          </Badge>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            </div>
+          </>
         )}
       </SectionCard>
     </div>

@@ -1,7 +1,6 @@
 "use client";
 
-import { useState, useCallback, useEffect, useMemo } from "react";
-import { fetchOptimizationSnapshot } from "@/lib/api/snapshot";
+import { useCallback, useMemo, useState } from "react";
 import {
   mergeBaselineSupervisors,
   normalizeSnapshotPods,
@@ -37,66 +36,23 @@ import { TeamProfilePanel } from "@/components/team/team-profile-panel";
 import type { Snapshot } from "@/lib/data/types";
 import type { OptimizationMeta } from "@/lib/data/snapshot";
 
-type RunLoadState = "idle" | "loading" | "ready" | "error";
-
 interface PlatformShellProps {
+  snapshot: Snapshot;
   baselineSnapshot: Snapshot;
   optimizations: OptimizationMeta[];
 }
 
-export function PlatformShell({ baselineSnapshot, optimizations }: PlatformShellProps) {
-  const [activeSnapshot, setActiveSnapshot] = useState<Snapshot>(() =>
-    normalizeSnapshotPods(baselineSnapshot),
-  );
+export function PlatformShell({
+  snapshot,
+  baselineSnapshot,
+  optimizations,
+}: PlatformShellProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [runLoadState, setRunLoadState] = useState<RunLoadState>("idle");
-  const [runError, setRunError] = useState<string | null>(null);
 
-  const [activeOptId, setActiveOptId] = useQueryState("opt_id", {
+  const [activeOptId] = useQueryState("opt_id", {
     defaultValue: "",
     clearOnDefault: true,
   });
-
-  // Baseline only — never pull SSR snapshot when an overlay is active.
-  useEffect(() => {
-    if (activeOptId) return;
-    setRunLoadState((prev) => (prev === "error" ? "error" : "idle"));
-    setActiveSnapshot(normalizeSnapshotPods(baselineSnapshot));
-  }, [activeOptId, baselineSnapshot]);
-
-  // Overlay — sole writer when opt_id is set.
-  useEffect(() => {
-    if (!activeOptId) return;
-
-    let cancelled = false;
-    setRunLoadState("loading");
-    setRunError(null);
-
-    fetchOptimizationSnapshot(activeOptId)
-      .then((loaded) => {
-        if (!cancelled) {
-          setActiveSnapshot(normalizeSnapshotPods(loaded));
-          setRunLoadState("ready");
-        }
-      })
-      .catch((err: unknown) => {
-        if (cancelled) return;
-        const message =
-          err instanceof Error ? err.message : "Selected roster run could not be loaded.";
-        setRunLoadState("error");
-        setRunError(message);
-        setActiveSnapshot(normalizeSnapshotPods(baselineSnapshot));
-        void setActiveOptId("");
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [activeOptId, baselineSnapshot, setActiveOptId]);
-
-  const handleUpdateSnapshot = useCallback((next: Snapshot) => {
-    setActiveSnapshot(normalizeSnapshotPods(next));
-  }, []);
 
   const [tab, setTab] = useQueryState<TabId>(
     "tab",
@@ -112,10 +68,13 @@ export function PlatformShell({ baselineSnapshot, optimizations }: PlatformShell
 
   const [rawLeadPct, setLeadPct] = useQueryState("lead", parseAsFloat);
 
-  // Supervisors are not part of CP-SAT overlays — always show baseline supervisor rows.
+  // Derive directly from props so every server-side run switch (?opt_id=)
+  // flows to all tabs in the same render — no intermediate useState that
+  // would lag a tick behind the new snapshot.
+  // Supervisors are not part of CP-SAT overlays — always pull baseline rows.
   const displaySnapshot = useMemo(
-    () => mergeBaselineSupervisors(activeSnapshot, baselineSnapshot),
-    [activeSnapshot, baselineSnapshot],
+    () => mergeBaselineSupervisors(normalizeSnapshotPods(snapshot), baselineSnapshot),
+    [snapshot, baselineSnapshot],
   );
 
   const leadPct = rawLeadPct ?? displaySnapshot.meta.lead_on_work_default;
@@ -171,7 +130,6 @@ export function PlatformShell({ baselineSnapshot, optimizations }: PlatformShell
           <OptimizerTab
             snapshot={displaySnapshot}
             baselineSnapshot={baselineSnapshot}
-            onUpdateSnapshot={handleUpdateSnapshot}
             optimizations={optimizations}
           />
         );
@@ -203,18 +161,6 @@ export function PlatformShell({ baselineSnapshot, optimizations }: PlatformShell
           }
         />
 
-        {runLoadState === "loading" && activeOptId && (
-          <div className="border-b border-primary/20 bg-primary/5 px-4 py-2 text-center text-xs text-primary sm:px-6">
-            Loading roster run…
-          </div>
-        )}
-
-        {runLoadState === "error" && runError && (
-          <div className="border-b border-rose-500/20 bg-rose-500/5 px-4 py-2 text-center text-xs text-rose-700 dark:text-rose-400 sm:px-6">
-            Selected roster run could not be loaded. {runError}
-          </div>
-        )}
-
         <main className="mx-auto w-full max-w-7xl flex-1 px-4 py-6 sm:px-6">
           <div className="min-h-[60vh] rounded-2xl surface-inset p-6">
             {renderTabContent()}
@@ -231,9 +177,7 @@ export function PlatformShell({ baselineSnapshot, optimizations }: PlatformShell
             </span>
             <span className="font-mono text-[11px]">
               {activeOptId
-                ? runLoadState === "loading"
-                  ? `run: ${activeOptId.slice(0, 8)}… (loading)`
-                  : `run: ${activeOptId.slice(0, 8)}…`
+                ? `run: ${activeOptId.slice(0, 8)}…`
                 : `source: ${displaySnapshot.meta.source}`}
             </span>
           </div>

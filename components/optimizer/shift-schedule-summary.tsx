@@ -3,20 +3,24 @@
 import { useMemo } from "react";
 import { SectionCard } from "@/components/shared/section-card";
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+  MobileScrollTable,
+  MobileTableSection,
+  mobileNumCellClass,
+  mobileNumHeadClass,
+  mobileStickyCellClass,
+  mobileStickyHeadClass,
+  mobileStickyMutedCellClass,
+  mobileTableClass,
+  mobileTdClass,
+  mobileThClass,
+} from "@/components/shared/mobile-scroll-table";
 import { buildShiftScheduleSummary } from "@/lib/compute/shift-schedule-summary";
 import {
+  DAILY_FOOTER_ROWS,
   DAILY_SUMMARY_ROW_LABELS,
   SCHEDULE_SHIFT_TYPE_LABELS,
-  SCHEDULE_SHIFT_TYPES,
-  WEEKLY_PATTERN_ROWS,
-  type DailySummaryRowKey,
+  SCHEDULE_SHIFT_TYPE_SHORT_LABELS,
+  type ScheduleShiftTypeKey,
 } from "@/lib/compute/schedule-shift-types";
 import { DOW_LIST, type Snapshot } from "@/lib/data/types";
 import { cn } from "@/lib/utils";
@@ -29,29 +33,16 @@ function formatPct(value: number): string {
   return `${value.toFixed(1)}%`;
 }
 
-function CountCell({ value, className }: { value: number; className?: string }) {
+function ShiftTypeHeader({ shiftKey }: { shiftKey: ScheduleShiftTypeKey }) {
   return (
-    <TableCell className={cn("text-xs text-right tabular-nums", className)}>
-      {value}
-    </TableCell>
+    <>
+      <span className="sm:hidden" title={SCHEDULE_SHIFT_TYPE_LABELS[shiftKey]}>
+        {SCHEDULE_SHIFT_TYPE_SHORT_LABELS[shiftKey]}
+      </span>
+      <span className="hidden sm:inline">{SCHEDULE_SHIFT_TYPE_LABELS[shiftKey]}</span>
+    </>
   );
 }
-
-function PctCell({ value, className }: { value: number; className?: string }) {
-  return (
-    <TableCell className={cn("text-xs text-right tabular-nums", className)}>
-      {formatPct(value)}
-    </TableCell>
-  );
-}
-
-const SUMMARY_ROWS: DailySummaryRowKey[] = [
-  "eightHourSplitTotal",
-  "totalSplitShifts",
-  "totalNonStraightEightHour",
-  "totalShifts",
-  "totalCubiclesRequired",
-];
 
 export function ShiftScheduleSummary({ proposed }: ShiftScheduleSummaryProps) {
   const summary = useMemo(() => buildShiftScheduleSummary(proposed), [proposed]);
@@ -60,11 +51,11 @@ export function ShiftScheduleSummary({ proposed }: ShiftScheduleSummaryProps) {
     <SectionCard
       title="Shift Schedule Summary"
       description="Proposed roster schedule by shift type and weekly pattern."
+      contentClassName="px-3 sm:px-5"
     >
       <div className="space-y-8">
         <DailyShiftsTable summary={summary} />
-        <WeeklyPatternsTable summary={summary} mode="counts" />
-        <WeeklyPatternsTable summary={summary} mode="percentages" />
+        <WeeklyPatternsTable summary={summary} />
       </div>
     </SectionCard>
   );
@@ -76,122 +67,155 @@ function DailyShiftsTable({
   summary: ReturnType<typeof buildShiftScheduleSummary>;
 }) {
   const { daily } = summary;
+  const shiftTypes = daily.activeShiftTypes;
+
+  if (shiftTypes.length === 0) {
+    return (
+      <MobileTableSection title="Daily Shifts Scheduled">
+        <p className="text-xs text-muted-foreground">No scheduled shifts in this roster.</p>
+      </MobileTableSection>
+    );
+  }
 
   return (
-    <div className="space-y-2">
-      <div>
-        <h3 className="text-sm font-semibold tracking-tight">Daily Shifts Scheduled</h3>
-        <p className="text-xs text-muted-foreground mt-0.5">
-          Shifts scheduled per day of week
-        </p>
-      </div>
-      <div className="rounded-md border overflow-x-auto">
-        <Table>
-          <TableHeader>
-            <TableRow className="bg-muted/40 hover:bg-muted/40">
-              <TableHead className="text-xs min-w-[180px]">Shift Type</TableHead>
+    <MobileTableSection
+      title="Daily Shifts Scheduled"
+      description="Shifts scheduled per day of week"
+    >
+      <MobileScrollTable>
+        <table className={mobileTableClass}>
+          <thead>
+            <tr className="border-b bg-muted/40">
+              <th className={cn(mobileThClass, mobileStickyHeadClass)}>Shift type</th>
               {DOW_LIST.map((day) => (
-                <TableHead key={day} className="text-xs text-right w-12">
+                <th key={day} className={cn(mobileThClass, mobileNumHeadClass)}>
                   {day}
-                </TableHead>
+                </th>
               ))}
-              <TableHead className="text-xs text-right w-16">Total Week</TableHead>
-              <TableHead className="text-xs text-right w-16">Pct.</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {SCHEDULE_SHIFT_TYPES.map((key) => (
-              <TableRow key={key}>
-                <TableCell className="text-xs font-medium">
-                  {SCHEDULE_SHIFT_TYPE_LABELS[key]}
-                </TableCell>
+              <th className={cn(mobileThClass, mobileNumHeadClass, "min-w-[3rem]")}>
+                <span className="sm:hidden">Wk</span>
+                <span className="hidden sm:inline">Week total</span>
+              </th>
+              <th className={cn(mobileThClass, mobileNumHeadClass, "min-w-[2.5rem]")}>
+                <span className="sm:hidden">%</span>
+                <span className="hidden sm:inline">Share</span>
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {shiftTypes.map((key) => (
+              <tr key={key} className="border-b">
+                <td className={cn(mobileTdClass, mobileStickyCellClass, "font-medium")}>
+                  <ShiftTypeHeader shiftKey={key} />
+                </td>
                 {DOW_LIST.map((day) => (
-                  <CountCell key={day} value={daily.byShiftType[key][day]} />
+                  <td key={day} className={cn(mobileTdClass, mobileNumCellClass)}>
+                    {daily.byShiftType[key][day]}
+                  </td>
                 ))}
-                <CountCell value={daily.weekTotals[key]} />
-                <PctCell value={daily.weekPct[key]} />
-              </TableRow>
+                <td className={cn(mobileTdClass, mobileNumCellClass, "font-medium")}>
+                  {daily.weekTotals[key]}
+                </td>
+                <td className={cn(mobileTdClass, mobileNumCellClass)}>
+                  {formatPct(daily.weekPct[key])}
+                </td>
+              </tr>
             ))}
 
-            {SUMMARY_ROWS.map((rowKey) => {
+            {DAILY_FOOTER_ROWS.map((rowKey) => {
               const isCubicleRow = rowKey === "totalCubiclesRequired";
               const rowValues = daily.summary[rowKey];
+
               return (
-                <TableRow
-                  key={rowKey}
-                  className={cn("bg-muted/40", isCubicleRow && "font-semibold")}
-                >
-                  <TableCell
+                <tr key={rowKey} className="border-b bg-muted/40">
+                  <td
                     className={cn(
-                      "text-xs",
+                      mobileTdClass,
+                      mobileStickyMutedCellClass,
                       isCubicleRow ? "font-semibold" : "font-medium text-muted-foreground",
                     )}
                   >
                     {DAILY_SUMMARY_ROW_LABELS[rowKey]}
-                  </TableCell>
+                  </td>
                   {DOW_LIST.map((day) => (
-                    <CountCell
+                    <td
                       key={day}
-                      value={rowValues[day]}
-                      className={isCubicleRow ? "font-semibold" : undefined}
-                    />
+                      className={cn(
+                        mobileTdClass,
+                        mobileNumCellClass,
+                        isCubicleRow && "font-semibold",
+                      )}
+                    >
+                      {rowValues[day]}
+                    </td>
                   ))}
-                  <CountCell
-                    value={daily.summaryWeekTotals[rowKey]}
-                    className={isCubicleRow ? "font-semibold" : undefined}
-                  />
-                  <PctCell
-                    value={
-                      isCubicleRow
-                        ? 0
-                        : daily.summaryWeekPct[
-                            rowKey as Exclude<DailySummaryRowKey, "totalCubiclesRequired">
-                          ]
-                    }
-                    className={isCubicleRow ? "text-muted-foreground" : undefined}
-                  />
-                </TableRow>
+                  <td
+                    className={cn(
+                      mobileTdClass,
+                      mobileNumCellClass,
+                      isCubicleRow && "font-semibold",
+                    )}
+                  >
+                    {daily.summaryWeekTotals[rowKey]}
+                  </td>
+                  <td
+                    className={cn(
+                      mobileTdClass,
+                      mobileNumCellClass,
+                      isCubicleRow ? "text-muted-foreground" : undefined,
+                    )}
+                  >
+                    {isCubicleRow ? "—" : formatPct(daily.summaryWeekPct.totalShifts)}
+                  </td>
+                </tr>
               );
             })}
-          </TableBody>
-        </Table>
-      </div>
-    </div>
+          </tbody>
+        </table>
+      </MobileScrollTable>
+    </MobileTableSection>
   );
 }
 
 function WeeklyPatternsTable({
   summary,
-  mode,
 }: {
   summary: ReturnType<typeof buildShiftScheduleSummary>;
-  mode: "counts" | "percentages";
 }) {
   const { weeklyPatterns } = summary;
-  const title =
-    mode === "counts"
-      ? "Weekly Shift Patterns Scheduled"
-      : "Weekly Shift Patterns Scheduled (Percentages)";
+  const shiftTypes = weeklyPatterns.activeShiftTypes;
+  const patternRows = weeklyPatterns.activePatternRows;
+
+  if (shiftTypes.length === 0 || patternRows.length === 0) {
+    return null;
+  }
 
   return (
-    <div className="space-y-2">
-      <h3 className="text-sm font-semibold tracking-tight">{title}</h3>
-      <div className="rounded-md border overflow-x-auto">
-        <Table>
-          <TableHeader>
-            <TableRow className="bg-muted/40 hover:bg-muted/40">
-              <TableHead className="text-xs min-w-[180px]">Weekly Pattern</TableHead>
-              {SCHEDULE_SHIFT_TYPES.map((key) => (
-                <TableHead key={key} className="text-xs text-right min-w-[72px]">
-                  {SCHEDULE_SHIFT_TYPE_LABELS[key]}
-                </TableHead>
+    <MobileTableSection title="Weekly shift patterns">
+      <MobileScrollTable>
+        <table className={mobileTableClass}>
+          <thead>
+            <tr className="border-b bg-muted/40">
+              <th className={cn(mobileThClass, mobileStickyHeadClass)}>Off days</th>
+              {shiftTypes.map((key) => (
+                <th
+                  key={key}
+                  className={cn(mobileThClass, mobileNumHeadClass, "min-w-[2.75rem] sm:min-w-[4rem]")}
+                  title={SCHEDULE_SHIFT_TYPE_LABELS[key]}
+                >
+                  <ShiftTypeHeader shiftKey={key} />
+                </th>
               ))}
-              <TableHead className="text-xs text-right w-20">All Shift Types</TableHead>
-              <TableHead className="text-xs text-right w-20">Percent of Total</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {WEEKLY_PATTERN_ROWS.map((row) => {
+              <th className={cn(mobileThClass, mobileNumHeadClass, "min-w-[3rem]")}>
+                Total
+              </th>
+              <th className={cn(mobileThClass, mobileNumHeadClass, "min-w-[2.75rem]")}>
+                Share
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {patternRows.map((row) => {
               const rowTotal = weeklyPatterns.rowTotals[row.key];
               const rowPctOfGrand =
                 weeklyPatterns.grandTotal > 0
@@ -199,64 +223,44 @@ function WeeklyPatternsTable({
                   : 0;
 
               return (
-                <TableRow key={row.key}>
-                  <TableCell className="text-xs font-medium">{row.label}</TableCell>
-                  {SCHEDULE_SHIFT_TYPES.map((key) =>
-                    mode === "counts" ? (
-                      <CountCell
-                        key={key}
-                        value={weeklyPatterns.byPattern[row.key][key]}
-                      />
-                    ) : (
-                      <PctCell key={key} value={weeklyPatterns.rowPct[row.key][key]} />
-                    ),
-                  )}
-                  {mode === "counts" ? (
-                    <>
-                      <CountCell value={rowTotal} />
-                      <PctCell value={rowPctOfGrand} />
-                    </>
-                  ) : (
-                    <>
-                      <TableCell className="text-xs text-right tabular-nums">—</TableCell>
-                      <PctCell value={rowPctOfGrand} />
-                    </>
-                  )}
-                </TableRow>
+                <tr key={row.key} className="border-b">
+                  <td className={cn(mobileTdClass, mobileStickyCellClass, "font-medium")}>
+                    {row.label}
+                  </td>
+                  {shiftTypes.map((key) => (
+                    <td key={key} className={cn(mobileTdClass, mobileNumCellClass)}>
+                      {weeklyPatterns.byPattern[row.key][key]}
+                    </td>
+                  ))}
+                  <td className={cn(mobileTdClass, mobileNumCellClass, "font-medium")}>
+                    {rowTotal}
+                  </td>
+                  <td className={cn(mobileTdClass, mobileNumCellClass)}>
+                    {formatPct(rowPctOfGrand)}
+                  </td>
+                </tr>
               );
             })}
 
-            <TableRow className="bg-muted/40 font-medium">
-              <TableCell className="text-xs font-semibold">All Patterns</TableCell>
-              {SCHEDULE_SHIFT_TYPES.map((key) =>
-                mode === "counts" ? (
-                  <CountCell key={key} value={weeklyPatterns.columnTotals[key]} />
-                ) : (
-                  <PctCell
-                    key={key}
-                    value={
-                      weeklyPatterns.grandTotal > 0
-                        ? (weeklyPatterns.columnTotals[key] / weeklyPatterns.grandTotal) * 100
-                        : 0
-                    }
-                  />
-                ),
-              )}
-              {mode === "counts" ? (
-                <>
-                  <CountCell value={weeklyPatterns.grandTotal} className="font-semibold" />
-                  <PctCell value={weeklyPatterns.grandTotal > 0 ? 100 : 0} />
-                </>
-              ) : (
-                <>
-                  <TableCell className="text-xs text-right tabular-nums">—</TableCell>
-                  <PctCell value={100} />
-                </>
-              )}
-            </TableRow>
-          </TableBody>
-        </Table>
-      </div>
-    </div>
+            <tr className="border-b bg-muted/40 font-medium">
+              <td className={cn(mobileTdClass, mobileStickyMutedCellClass, "font-semibold")}>
+                All patterns
+              </td>
+              {shiftTypes.map((key) => (
+                <td key={key} className={cn(mobileTdClass, mobileNumCellClass, "font-semibold")}>
+                  {weeklyPatterns.columnTotals[key]}
+                </td>
+              ))}
+              <td className={cn(mobileTdClass, mobileNumCellClass, "font-semibold")}>
+                {weeklyPatterns.grandTotal}
+              </td>
+              <td className={cn(mobileTdClass, mobileNumCellClass)}>
+                {formatPct(weeklyPatterns.grandTotal > 0 ? 100 : 0)}
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </MobileScrollTable>
+    </MobileTableSection>
   );
 }

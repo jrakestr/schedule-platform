@@ -123,6 +123,7 @@ export function SiteHeader({
                   value={optId || "default"}
                   onValueChange={async (val) => {
                     await setOptId(val === "default" ? "" : val);
+                    router.refresh();
                   }}
                 >
                   <SelectTrigger className="w-[180px] h-9 text-xs surface-inset">
@@ -132,6 +133,12 @@ export function SiteHeader({
                     <SelectItem value="default" className="text-xs">
                       Default Baseline
                     </SelectItem>
+                    {optId &&
+                      !validOptimizations.some((opt) => opt.id === optId) && (
+                        <SelectItem value={optId} className="text-xs">
+                          Run {optId.slice(0, 8)}…
+                        </SelectItem>
+                      )}
                     {validOptimizations.map((opt) => (
                       <SelectItem key={opt.id} value={opt.id} className="text-xs">
                         {opt.run_name}

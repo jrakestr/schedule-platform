@@ -199,9 +199,13 @@ describe("buildShiftScheduleSummary", () => {
     expect(summary.daily.byShiftType.eightHourSplit12.Mon).toBe(1);
     expect(summary.daily.byShiftType.sixHourRegular.Sat).toBe(1);
     expect(summary.daily.summary.totalShifts.Mon).toBe(2);
-    expect(summary.daily.summary.eightHourSplitTotal.Mon).toBe(1);
     expect(summary.daily.summary.totalCubiclesRequired.Mon).toBe(14);
     expect(summary.daily.weekTotals.eightHourRegular).toBe(5);
+    expect(summary.daily.activeShiftTypes).toEqual([
+      "eightHourRegular",
+      "eightHourSplit12",
+      "sixHourRegular",
+    ]);
   });
 
   it("groups weekly patterns and computes zero-safe percentages", () => {
@@ -232,9 +236,11 @@ describe("buildShiftScheduleSummary", () => {
     expect(summary.weeklyPatterns.byPattern.monFri.eightHourRegular).toBe(2);
     expect(summary.weeklyPatterns.byPattern.wedSun.sixHourRegular).toBe(1);
     expect(summary.weeklyPatterns.rowTotals.monFri).toBe(2);
-    expect(summary.weeklyPatterns.rowPct.monFri.eightHourRegular).toBe(100);
-    expect(summary.weeklyPatterns.rowPct.wedSun.sixHourRegular).toBe(100);
-    expect(summary.weeklyPatterns.rowPct.monFri.sixHourRegular).toBe(0);
+    expect(summary.weeklyPatterns.activePatternRows.map((row) => row.key)).toEqual([
+      "monFri",
+      "wedSun",
+    ]);
+    expect(summary.weeklyPatterns.activeShiftTypes).toEqual(["eightHourRegular", "sixHourRegular"]);
   });
 
   it("excludes rotation off_pair from weekly pattern counts", () => {

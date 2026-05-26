@@ -21,30 +21,38 @@ export const SCHEDULE_SHIFT_TYPES: readonly ScheduleShiftTypeKey[] = [
 ] as const;
 
 export const SCHEDULE_SHIFT_TYPE_LABELS: Record<ScheduleShiftTypeKey, string> = {
-  eightHourRegular: "8-hour regular",
-  eightHourSplit11: "8-hour split · 11h spread",
-  eightHourSplit12: "8-hour split · 12h spread",
-  sixHourRegular: "6-hour regular",
-  tenHourRegular: "10-hour regular",
-  tenHourSplit13: "10-hour split · 13h spread",
+  eightHourRegular: "8-hour",
+  eightHourSplit11: "Split shift (11h spread)",
+  eightHourSplit12: "Split shift (12h spread)",
+  sixHourRegular: "6-hour",
+  tenHourRegular: "10-hour",
+  tenHourSplit13: "10-hour split",
   twelveHour: "12-hour",
 };
 
-/** Summary row keys for the daily shifts table (non-shift-type rows). */
-export type DailySummaryRowKey =
-  | "eightHourSplitTotal"
-  | "totalSplitShifts"
-  | "totalNonStraightEightHour"
-  | "totalShifts"
-  | "totalCubiclesRequired";
+/** Compact column headers for narrow viewports. */
+export const SCHEDULE_SHIFT_TYPE_SHORT_LABELS: Record<ScheduleShiftTypeKey, string> = {
+  eightHourRegular: "8h",
+  eightHourSplit11: "Split 11",
+  eightHourSplit12: "Split 12",
+  sixHourRegular: "6h",
+  tenHourRegular: "10h",
+  tenHourSplit13: "10h split",
+  twelveHour: "12h",
+};
+
+/** Footer rows shown beneath shift-type counts in the daily table. */
+export type DailySummaryRowKey = "totalShifts" | "totalCubiclesRequired";
 
 export const DAILY_SUMMARY_ROW_LABELS: Record<DailySummaryRowKey, string> = {
-  eightHourSplitTotal: "8-hour split total",
-  totalSplitShifts: "Total split shifts",
-  totalNonStraightEightHour: "Total non-straight 8-hour shifts",
-  totalShifts: "Total Shifts",
-  totalCubiclesRequired: "Total Cubicles Required",
+  totalShifts: "Total shifts",
+  totalCubiclesRequired: "Total cubicles required",
 };
+
+export const DAILY_FOOTER_ROWS: readonly DailySummaryRowKey[] = [
+  "totalShifts",
+  "totalCubiclesRequired",
+] as const;
 
 export type WeeklyPatternKey =
   | "monFri"
@@ -63,13 +71,13 @@ export interface WeeklyPatternRow {
 
 /** Seven consecutive off-pair rotation patterns (matches roster OFF_PAIR_DAYS). */
 export const WEEKLY_PATTERN_ROWS: readonly WeeklyPatternRow[] = [
-  { key: "monFri", label: "Mon–Fri / Mon–Thurs", offPair: "Sat+Sun" },
-  { key: "wedSun", label: "Wed–Sun / Wed–Sat", offPair: "Mon+Tue" },
-  { key: "thursMon", label: "Thurs–Mon / Thurs–Sun", offPair: "Tue+Wed" },
-  { key: "friTues", label: "Fri–Tues / Fri–Mon", offPair: "Wed+Thu" },
-  { key: "satWed", label: "Sat–Wed / Sat–Tues", offPair: "Thu+Fri" },
-  { key: "sunThurs", label: "Sun–Thurs / Sun–Wed", offPair: "Fri+Sat" },
-  { key: "tuesSat", label: "Tues–Sat / Tues–Fri", offPair: "Sun+Mon" },
+  { key: "monFri", label: "Mon–Fri", offPair: "Sat+Sun" },
+  { key: "wedSun", label: "Wed–Sun", offPair: "Mon+Tue" },
+  { key: "thursMon", label: "Thu–Mon", offPair: "Tue+Wed" },
+  { key: "friTues", label: "Fri–Tue", offPair: "Wed+Thu" },
+  { key: "satWed", label: "Sat–Wed", offPair: "Thu+Fri" },
+  { key: "sunThurs", label: "Sun–Thu", offPair: "Fri+Sat" },
+  { key: "tuesSat", label: "Tue–Sat", offPair: "Sun+Mon" },
 ] as const;
 
 const OFF_PAIR_TO_PATTERN = new Map<string, WeeklyPatternKey>(
@@ -167,23 +175,18 @@ export function weeklyPatternFromOffPair(offPair: string | undefined): WeeklyPat
   return OFF_PAIR_TO_PATTERN.get(normalized) ?? null;
 }
 
-export function isSplitShiftType(key: ScheduleShiftTypeKey): boolean {
-  return key === "eightHourSplit11" || key === "eightHourSplit12" || key === "tenHourSplit13";
+/** Shift types with at least one scheduled shift in the roster week. */
+export function activeScheduleShiftTypes(
+  weekTotals: Record<ScheduleShiftTypeKey, number>,
+): ScheduleShiftTypeKey[] {
+  return SCHEDULE_SHIFT_TYPES.filter((key) => weekTotals[key] > 0);
 }
 
-export function isEightHourSplitType(key: ScheduleShiftTypeKey): boolean {
-  return key === "eightHourSplit11" || key === "eightHourSplit12";
-}
-
-export function isNonStraightEightHourType(key: ScheduleShiftTypeKey): boolean {
-  return (
-    key === "eightHourSplit11" ||
-    key === "eightHourSplit12" ||
-    key === "sixHourRegular" ||
-    key === "tenHourRegular" ||
-    key === "tenHourSplit13" ||
-    key === "twelveHour"
-  );
+/** Weekly off-pair patterns with at least one assigned agent. */
+export function activeWeeklyPatternRows(
+  rowTotals: Record<WeeklyPatternKey, number>,
+): WeeklyPatternRow[] {
+  return WEEKLY_PATTERN_ROWS.filter((row) => rowTotals[row.key] > 0);
 }
 
 export function emptyShiftTypeCounts(): Record<ScheduleShiftTypeKey, number> {

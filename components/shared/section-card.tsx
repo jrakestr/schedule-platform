@@ -56,7 +56,7 @@ export function SectionCard({
               )}
             </div>
             {toolbar && (
-              <div className="flex min-w-0 w-full sm:w-auto max-w-full items-center gap-2 overflow-x-auto">
+              <div className="flex min-w-0 w-full max-w-full basis-full items-center gap-2 overflow-x-auto">
                 {toolbar}
               </div>
             )}

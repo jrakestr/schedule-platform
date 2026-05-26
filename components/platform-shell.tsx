@@ -1,7 +1,11 @@
 "use client";
 
-import { useState, useCallback, useEffect } from "react";
-import { normalizeSnapshotPods } from "@/lib/data/normalize-snapshot";
+import { useState, useCallback, useEffect, useMemo } from "react";
+import { fetchOptimizationSnapshot } from "@/lib/api/snapshot";
+import {
+  mergeBaselineSupervisors,
+  normalizeSnapshotPods,
+} from "@/lib/data/normalize-snapshot";
 import { useQueryState, parseAsFloat, parseAsStringEnum } from "nuqs";
 import { KeyboardShortcuts } from "@/components/keyboard-shortcuts";
 import { SiteHeader } from "@/components/header/site-header";
@@ -33,25 +37,62 @@ import { TeamProfilePanel } from "@/components/team/team-profile-panel";
 import type { Snapshot } from "@/lib/data/types";
 import type { OptimizationMeta } from "@/lib/data/snapshot";
 
+type RunLoadState = "idle" | "loading" | "ready" | "error";
+
 interface PlatformShellProps {
-  snapshot: Snapshot;
   baselineSnapshot: Snapshot;
   optimizations: OptimizationMeta[];
 }
 
-export function PlatformShell({ snapshot, baselineSnapshot, optimizations }: PlatformShellProps) {
-  // 1. ELIMINATED USEEFFECT BUG:
-  // Instead of syncing props to state via an effect, we key the local state
-  // directly on the snapshot source. When the snapshot prop changes, 
-  // React naturally resets this state to the incoming prop.
+export function PlatformShell({ baselineSnapshot, optimizations }: PlatformShellProps) {
   const [activeSnapshot, setActiveSnapshot] = useState<Snapshot>(() =>
-    normalizeSnapshotPods(snapshot),
+    normalizeSnapshotPods(baselineSnapshot),
   );
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [runLoadState, setRunLoadState] = useState<RunLoadState>("idle");
+  const [runError, setRunError] = useState<string | null>(null);
 
+  const [activeOptId, setActiveOptId] = useQueryState("opt_id", {
+    defaultValue: "",
+    clearOnDefault: true,
+  });
+
+  // Baseline only — never pull SSR snapshot when an overlay is active.
   useEffect(() => {
-    setActiveSnapshot(normalizeSnapshotPods(snapshot));
-  }, [snapshot]);
+    if (activeOptId) return;
+    setRunLoadState((prev) => (prev === "error" ? "error" : "idle"));
+    setActiveSnapshot(normalizeSnapshotPods(baselineSnapshot));
+  }, [activeOptId, baselineSnapshot]);
+
+  // Overlay — sole writer when opt_id is set.
+  useEffect(() => {
+    if (!activeOptId) return;
+
+    let cancelled = false;
+    setRunLoadState("loading");
+    setRunError(null);
+
+    fetchOptimizationSnapshot(activeOptId)
+      .then((loaded) => {
+        if (!cancelled) {
+          setActiveSnapshot(normalizeSnapshotPods(loaded));
+          setRunLoadState("ready");
+        }
+      })
+      .catch((err: unknown) => {
+        if (cancelled) return;
+        const message =
+          err instanceof Error ? err.message : "Selected roster run could not be loaded.";
+        setRunLoadState("error");
+        setRunError(message);
+        setActiveSnapshot(normalizeSnapshotPods(baselineSnapshot));
+        void setActiveOptId("");
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeOptId, baselineSnapshot, setActiveOptId]);
 
   const handleUpdateSnapshot = useCallback((next: Snapshot) => {
     setActiveSnapshot(normalizeSnapshotPods(next));
@@ -70,26 +111,25 @@ export function PlatformShell({ snapshot, baselineSnapshot, optimizations }: Pla
   );
 
   const [rawLeadPct, setLeadPct] = useQueryState("lead", parseAsFloat);
-  const leadPct = rawLeadPct ?? activeSnapshot.meta.lead_on_work_default;
 
-  const [activeOptId] = useQueryState("opt_id", {
-    defaultValue: "",
-    clearOnDefault: true,
-  });
+  // Supervisors are not part of CP-SAT overlays — always show baseline supervisor rows.
+  const displaySnapshot = useMemo(
+    () => mergeBaselineSupervisors(activeSnapshot, baselineSnapshot),
+    [activeSnapshot, baselineSnapshot],
+  );
 
-  // 2. CONSOLIDATED TRANSITIONS:
-  // Batched updates to avoid back-button history clutter and extra renders
+  const leadPct = rawLeadPct ?? displaySnapshot.meta.lead_on_work_default;
+
   const jumpToTab = useCallback(
     async (nextTab: TabId) => {
       await Promise.all([
         setTab(nextTab),
-        section !== "call-center" ? setSection("call-center") : Promise.resolve()
+        section !== "call-center" ? setSection("call-center") : Promise.resolve(),
       ]);
     },
     [section, setSection, setTab],
   );
 
-  // 3. TAB REGISTRY (Clean rendering pattern)
   const renderTabContent = () => {
     if (section === "drivers") {
       return <DriversPlaceholder />;
@@ -99,7 +139,7 @@ export function PlatformShell({ snapshot, baselineSnapshot, optimizations }: Pla
       case "coverage":
         return (
           <CoverageTab
-            snapshot={activeSnapshot}
+            snapshot={displaySnapshot}
             baselineSnapshot={baselineSnapshot}
             leadPct={leadPct}
             optimizations={optimizations}
@@ -107,29 +147,29 @@ export function PlatformShell({ snapshot, baselineSnapshot, optimizations }: Pla
           />
         );
       case "validation":
-        return <ValidationTab snapshot={activeSnapshot} leadPct={leadPct} />;
+        return <ValidationTab snapshot={displaySnapshot} leadPct={leadPct} />;
       case "raci":
-        return <RaciTab snapshot={activeSnapshot} />;
+        return <RaciTab snapshot={displaySnapshot} />;
       case "supervisor":
         return (
           <SupervisorTab
-            snapshot={activeSnapshot}
+            snapshot={displaySnapshot}
             leadPct={leadPct}
             onJump={jumpToTab}
           />
         );
       case "pods":
-        return <PodsTab snapshot={activeSnapshot} />;
+        return <PodsTab snapshot={displaySnapshot} />;
       case "shifts":
-        return <ShiftsTab snapshot={activeSnapshot} leadPct={leadPct} />;
+        return <ShiftsTab snapshot={displaySnapshot} leadPct={leadPct} />;
       case "cubicles":
-        return <CubiclesTab snapshot={activeSnapshot} />;
+        return <CubiclesTab snapshot={displaySnapshot} />;
       case "roster":
-        return <RosterTab snapshot={activeSnapshot} />;
+        return <RosterTab snapshot={displaySnapshot} />;
       case "optimizer":
         return (
           <OptimizerTab
-            snapshot={activeSnapshot}
+            snapshot={displaySnapshot}
             baselineSnapshot={baselineSnapshot}
             onUpdateSnapshot={handleUpdateSnapshot}
             optimizations={optimizations}
@@ -153,7 +193,7 @@ export function PlatformShell({ snapshot, baselineSnapshot, optimizations }: Pla
 
       <div className="flex min-w-0 flex-1 flex-col">
         <SiteHeader
-          snapshot={activeSnapshot}
+          snapshot={displaySnapshot}
           leadPct={leadPct}
           setLeadPct={setLeadPct}
           onJump={jumpToTab}
@@ -163,23 +203,38 @@ export function PlatformShell({ snapshot, baselineSnapshot, optimizations }: Pla
           }
         />
 
+        {runLoadState === "loading" && activeOptId && (
+          <div className="border-b border-primary/20 bg-primary/5 px-4 py-2 text-center text-xs text-primary sm:px-6">
+            Loading roster run…
+          </div>
+        )}
+
+        {runLoadState === "error" && runError && (
+          <div className="border-b border-rose-500/20 bg-rose-500/5 px-4 py-2 text-center text-xs text-rose-700 dark:text-rose-400 sm:px-6">
+            Selected roster run could not be loaded. {runError}
+          </div>
+        )}
+
         <main className="mx-auto w-full max-w-7xl flex-1 px-4 py-6 sm:px-6">
           <div className="min-h-[60vh] rounded-2xl surface-inset p-6">
             {renderTabContent()}
           </div>
         </main>
 
-        <AgentProfilePanel snapshot={activeSnapshot} onJump={jumpToTab} />
-        <TeamProfilePanel snapshot={activeSnapshot} onJump={jumpToTab} />
+        <AgentProfilePanel snapshot={displaySnapshot} onJump={jumpToTab} />
+        <TeamProfilePanel snapshot={displaySnapshot} onJump={jumpToTab} />
 
         <footer className="mt-auto border-t surface-panel">
           <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-4 text-xs text-muted-foreground sm:px-6">
             <span>
-              {/* TODO: Safely derive stats (e.g. activeSnapshot.agents.length) instead of hardcoding text */}
               MJM Brokerage Scheduling Application · 53 roster · 6 Supervisor · 6 teams · 24/7 staffing
             </span>
             <span className="font-mono text-[11px]">
-              source: {activeSnapshot.meta.source}
+              {activeOptId
+                ? runLoadState === "loading"
+                  ? `run: ${activeOptId.slice(0, 8)}… (loading)`
+                  : `run: ${activeOptId.slice(0, 8)}…`
+                : `source: ${displaySnapshot.meta.source}`}
             </span>
           </div>
         </footer>

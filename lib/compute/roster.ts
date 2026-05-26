@@ -73,7 +73,7 @@ export function rosterRowsFor(
       id: i === 0 ? agent.id : "",
       role: i === 0 ? "Supervisor" : "",
       position: i === 0 ? "Supervisor" : "",
-      shift: a.shift_type,
+      shift: a.hours,
       start,
       end,
       day_label: a.weekday.slice(0, 3),

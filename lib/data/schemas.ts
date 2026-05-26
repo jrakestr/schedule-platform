@@ -22,6 +22,25 @@ export type WorkLimitations = z.infer<typeof workLimitationsSchema>;
 
 export const SHIFT_MAX_COUNT_LIMIT = 200;
 export const CUBICLE_CAP_LIMIT = 200;
+export const FLEX_SHIFT_MAX = 50;
+
+export const flexShiftAssignmentSchema = z.object({
+  enabled: z.boolean().default(false),
+  flexEarlyMaxCount: z
+    .number()
+    .int()
+    .nonnegative("Flex-early count cannot be negative")
+    .max(FLEX_SHIFT_MAX, `Flex-early count cannot exceed ${FLEX_SHIFT_MAX}`)
+    .default(0),
+  cleanupLateMaxCount: z
+    .number()
+    .int()
+    .nonnegative("Cleanup-late count cannot be negative")
+    .max(FLEX_SHIFT_MAX, `Cleanup-late count cannot exceed ${FLEX_SHIFT_MAX}`)
+    .default(0),
+});
+
+export type FlexShiftAssignment = z.infer<typeof flexShiftAssignmentSchema>;
 
 export const shiftConstraintSchema = z.object({
   enabled: z.boolean(),
@@ -52,6 +71,7 @@ export const optimizerConstraintsSchema = z.object({
     splitShift: shiftConstraintSchema,
   }),
   workLimitations: workLimitationsSchema.optional(),
+  flexShifts: flexShiftAssignmentSchema.optional(),
 });
 
 export type ShiftConstraint = z.infer<typeof shiftConstraintSchema>;

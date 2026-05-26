@@ -36,6 +36,8 @@ const MIN_VIEWPORT_H = 480;
 
 const SUP_SHIFT_COLOR: Record<string, string> = {
   DAY: "#0891b2",
+  EARLY: "#0d9488",
+  LATE: "#6366f1",
   NIGHT: "#475569",
 };
 

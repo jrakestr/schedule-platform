@@ -1,12 +1,12 @@
 import { connection, NextRequest, NextResponse } from "next/server";
-import { getLatestSnapshot } from "@/lib/data/snapshot";
+import { getLiveSnapshot } from "@/lib/data/snapshot";
 
 export async function GET(request: NextRequest) {
   await connection();
 
   try {
     const optId = request.nextUrl.searchParams.get("opt_id") ?? undefined;
-    const snapshot = await getLatestSnapshot(optId);
+    const snapshot = await getLiveSnapshot(optId);
     return NextResponse.json({ ok: true, snapshot });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : String(error);

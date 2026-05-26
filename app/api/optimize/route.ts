@@ -9,7 +9,11 @@ import { existsSync } from "node:fs";
 import { writeFile } from "node:fs/promises";
 import { promisify } from "node:util";
 import path from "node:path";
-import { optimizerConstraintsSchema, type WorkLimitations } from "@/lib/data/schemas";
+import {
+  optimizerConstraintsSchema,
+  type FlexShiftAssignment,
+  type WorkLimitations,
+} from "@/lib/data/schemas";
 
 const execFilePromise = promisify(execFile);
 
@@ -25,6 +29,9 @@ type RunConstraints = {
   shifts: Record<string, { enabled: boolean; maxCount: number }>;
   cubicleCap: number;
   workLimitations?: WorkLimitations;
+  scheduleOptions?: {
+    flexShiftAssignment?: FlexShiftAssignment;
+  };
 };
 
 type ApiError = {
@@ -339,7 +346,11 @@ export async function POST(request: Request) {
       );
     }
 
-    const { name, notes, shifts, cubicleCap, workLimitations } = validation.data;
+    const { name, notes, shifts, cubicleCap, workLimitations, flexShifts } = validation.data;
+    const scheduleOptions =
+      flexShifts && flexShifts.enabled
+        ? { flexShiftAssignment: flexShifts }
+        : undefined;
 
     debugLog(
       "route.ts:POST",
@@ -362,6 +373,7 @@ export async function POST(request: Request) {
         shifts,
         cubicleCap: cubicleCap ?? DEFAULT_CUBICLE_CAP,
         ...(workLimitations ? { workLimitations } : {}),
+        ...(scheduleOptions ? { scheduleOptions } : {}),
       },
     });
 
@@ -406,6 +418,7 @@ export async function POST(request: Request) {
           shifts,
           cubicleCap: cubicleCap ?? DEFAULT_CUBICLE_CAP,
           ...(workLimitations ? { workLimitations } : {}),
+          ...(scheduleOptions ? { scheduleOptions } : {}),
         });
       } catch (error: unknown) {
         logEvent("optimization.background_fatal", {

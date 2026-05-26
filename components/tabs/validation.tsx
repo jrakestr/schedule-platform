@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { ArrowRight, Building } from "lucide-react";
 import { useQueryState, parseAsString } from "nuqs";
 import { AgentLink } from "@/components/agent/agent-link";
+import { shiftLengthLabel } from "@/lib/compute/agent-context";
 import { TeamLink } from "@/components/team/team-link";
 import { SectionCard } from "@/components/shared/section-card";
 import { DayTabs } from "@/components/shared/day-tabs";
@@ -717,9 +718,9 @@ function ProposedStaffRow({
           )}
         </span>
       </div>
-      <div className="text-[10px] text-muted-foreground font-mono flex justify-between pt-0.5 border-t border-dashed">
-        <span>{info.agent.shift_id}</span>
-        <span>
+      <div className="text-[10px] text-muted-foreground flex justify-between pt-0.5 border-t border-dashed">
+        <span>{shiftLengthLabel(info.agent) ?? info.agent.shift_id}</span>
+        <span className="font-mono">
           {info.agent.start_clock}–{info.agent.end_clock}
         </span>
       </div>

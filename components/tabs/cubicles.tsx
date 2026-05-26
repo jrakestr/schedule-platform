@@ -20,6 +20,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { AgentLink } from "@/components/agent/agent-link";
+import { shiftLengthLabel } from "@/lib/compute/agent-context";
 import { CubiclePill } from "@/components/shared/cubicle-pill";
 import { StatTile } from "@/components/charts/stat-tile";
 import {
@@ -414,7 +415,7 @@ export function CubiclesTab({ snapshot }: CubiclesTabProps) {
                       <td className="p-2 text-xs text-muted-foreground">
                         {a.role} {a.position}
                       </td>
-                      <td className="p-2 font-mono text-xs">{a.shift_id}</td>
+                      <td className="p-2 text-xs">{shiftLengthLabel(a) ?? a.shift_id}</td>
                       {DOW_LIST.map((d) => {
                         const v = a.cubicle_by_day?.[d as DOW] ?? "";
                         const isCurrentCubicleHovered = hoveredCubicle && String(v) === hoveredCubicle;

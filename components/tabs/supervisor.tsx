@@ -80,32 +80,6 @@ export function SupervisorTab({ snapshot, onJump }: SupervisorTabProps) {
     });
     const maxHourCell = Math.max(1, ...Object.values(podHourly).flat());
 
-    const shiftIds = snapshot.shift_catalog.map((s) => s.shift_id);
-    const podShift: Record<string, Record<string, number>> = {};
-    for (const podName of podNames) {
-      const pod = snapshot.pods[podName];
-      const counts: Record<string, number> = Object.fromEntries(
-        shiftIds.map((s) => [s, 0]),
-      );
-      for (const id of pod.members) {
-        const a = snapshot.agents.find((x) => x.id === id);
-        if (!a) continue;
-        const baseId =
-          a.shift_class && counts.hasOwnProperty(a.shift_class)
-            ? a.shift_class
-            : a.shift_id;
-        if (counts.hasOwnProperty(baseId)) counts[baseId]++;
-      }
-      podShift[podName] = counts;
-    }
-    const shiftTotals = shiftIds.map((s) =>
-      podNames.reduce((sum, p) => sum + (podShift[p][s] ?? 0), 0),
-    );
-    const maxShift = Math.max(
-      1,
-      ...podNames.flatMap((p) => Object.values(podShift[p])),
-    );
-
     const podRole: Record<string, Record<string, number>> = {};
     for (const podName of podNames) {
       const pod = snapshot.pods[podName];
@@ -133,10 +107,6 @@ export function SupervisorTab({ snapshot, onJump }: SupervisorTabProps) {
       colTotals,
       callVolumeHour,
       maxHourCell,
-      shiftIds,
-      podShift,
-      shiftTotals,
-      maxShift,
       podRole,
       roleTotals,
       maxRole,
@@ -242,10 +212,6 @@ function MatricesView({
     colTotals: number[];
     callVolumeHour: number[];
     maxHourCell: number;
-    shiftIds: string[];
-    podShift: Record<string, Record<string, number>>;
-    shiftTotals: number[];
-    maxShift: number;
     podRole: Record<string, Record<string, number>>;
     roleTotals: number[];
     maxRole: number;
@@ -318,66 +284,8 @@ function MatricesView({
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <div>
-          <h3 className="font-semibold text-sm mb-2">Team × Shift overlap</h3>
-          <p className="text-xs text-muted-foreground mb-2">
-            Shift template count per team.
-          </p>
-          <div className="overflow-x-auto">
-            <table className="text-xs border-separate border-spacing-0 min-w-full">
-              <thead>
-                <tr>
-                  <th className="text-left p-2 sticky left-0 bg-card">Team</th>
-                  {matrices.shiftIds.map((s) => (
-                    <th
-                      key={s}
-                      className="p-2 text-center text-[11px] text-muted-foreground"
-                    >
-                      {s}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {podNames.map((podName) => (
-                  <tr key={podName}>
-                    <td className="p-2 sticky left-0 bg-card border-r font-semibold">
-                      <TeamLink teamName={podName} className="text-xs" />
-                    </td>
-                    {matrices.shiftIds.map((s) => {
-                      const v = matrices.podShift[podName][s];
-                      return (
-                        <td
-                          key={s}
-                          className={`p-2 text-center num ${cellTone(v, matrices.maxShift)}`}
-                        >
-                          {v || ""}
-                        </td>
-                      );
-                    })}
-                  </tr>
-                ))}
-                <tr className="border-t-2">
-                  <td className="p-2 sticky left-0 bg-muted/50 font-semibold">
-                    Total
-                  </td>
-                  {matrices.shiftTotals.map((v, i) => (
-                    <td
-                      key={i}
-                      className="p-2 text-center num bg-muted/30 font-semibold"
-                    >
-                      {v || ""}
-                    </td>
-                  ))}
-                </tr>
-              </tbody>
-            </table>
-          </div>
-        </div>
-
-        <div>
-          <h3 className="font-semibold text-sm mb-2">Team × Role mix</h3>
+      <div>
+        <h3 className="font-semibold text-sm mb-2">Team × Role mix</h3>
           <div className="overflow-x-auto">
             <table className="text-xs border-separate border-spacing-0 min-w-full">
               <thead>
@@ -441,7 +349,6 @@ function MatricesView({
               </tbody>
             </table>
           </div>
-        </div>
       </div>
 
       <CoverageLegend />
@@ -563,7 +470,7 @@ function CoverageView({
                   {s.assignments
                     .map(
                       (a) =>
-                        `${a.weekday.slice(0, 3)} ${a.shift_type} ${a.hours}`,
+                        `${a.weekday.slice(0, 3)} · ${a.hours}`,
                     )
                     .join(" · ")}
                 </TableCell>
@@ -805,10 +712,9 @@ function OvernightProof({ snapshot }: { snapshot: Snapshot }) {
         </table>
       </div>
       <p className="text-[11px] text-muted-foreground mt-3">
-        Source of truth:{" "}
-        <code className="font-mono">scripts/solve_supervisor_schedule.py</code>{" "}
-        enforces &ldquo;supply at least 1&rdquo; as a hard constraint for every
-        (day, hour).
+        Source of truth: operational supervisor grid (
+        <code className="font-mono">scripts/build_supervisor_schedule_from_template.py</code>
+        ). Coverage counts use actual clock hours per supervisor assignment.
       </p>
     </div>
   );

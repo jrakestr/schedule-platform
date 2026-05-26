@@ -2,6 +2,7 @@
 
 import { parseSegs } from "@/lib/compute/supply";
 import { shiftColorForAgent } from "@/lib/compute/colors";
+import { shiftLengthLabel } from "@/lib/compute/agent-context";
 import type { Agent, DOW, Pod, Snapshot } from "@/lib/data/types";
 
 interface SupervisorGanttProps {
@@ -171,7 +172,7 @@ export function SupervisorGantt({
                               fill={color}
                               opacity={0.9}
                             >
-                              <title>{`${agent.id} · ${agent.shift_id} ${agent.start_clock}-${agent.end_clock} · ${agent.role} ${agent.position}`}</title>
+                              <title>{`${agent.id} · ${shiftLengthLabel(agent) ?? agent.shift_id} ${agent.start_clock}-${agent.end_clock} · ${agent.role} ${agent.position}`}</title>
                             </rect>,
                           );
                           const wx1 = timeX(0);
@@ -187,7 +188,7 @@ export function SupervisorGantt({
                               fill={color}
                               opacity={0.9}
                             >
-                              <title>{`${agent.id} (continues) · ${agent.shift_id}`}</title>
+                              <title>{`${agent.id} (continues) · ${shiftLengthLabel(agent) ?? agent.shift_id}`}</title>
                             </rect>,
                           );
                         } else {
@@ -204,7 +205,7 @@ export function SupervisorGantt({
                               fill={color}
                               opacity={0.9}
                             >
-                              <title>{`${agent.id} · ${agent.shift_id} ${agent.start_clock}-${agent.end_clock} · ${agent.role} ${agent.position}`}</title>
+                              <title>{`${agent.id} · ${shiftLengthLabel(agent) ?? agent.shift_id} ${agent.start_clock}-${agent.end_clock} · ${agent.role} ${agent.position}`}</title>
                             </rect>,
                           );
                         }

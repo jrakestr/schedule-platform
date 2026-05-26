@@ -2,6 +2,7 @@
 
 import { DOW_LIST, type Agent } from "@/lib/data/types";
 import { shiftColor } from "@/lib/compute/colors";
+import { shiftLengthLabel } from "@/lib/compute/agent-context";
 import {
   resolveAgentDayCell,
   weekStripHeaderClock,
@@ -17,6 +18,7 @@ interface WeekStripProps {
 export function WeekStrip({ agent, className }: WeekStripProps) {
   const dotColor = shiftColor(agent.shift_id);
   const headerClock = weekStripHeaderClock(agent);
+  const lengthLabel = shiftLengthLabel(agent);
 
   return (
     <div
@@ -31,8 +33,8 @@ export function WeekStrip({ agent, className }: WeekStripProps) {
             className="inline-block h-2.5 w-2.5 shrink-0 rounded-full ring-1 ring-black/5 dark:ring-white/10"
             style={{ background: dotColor }}
           />
-          <span className="truncate text-xs font-semibold tracking-tight font-mono">
-            {agent.shift_id}
+          <span className="truncate text-xs font-semibold tracking-tight">
+            {lengthLabel ?? agent.shift_id}
           </span>
           <span className="hidden truncate text-[11px] text-muted-foreground sm:inline num">
             {headerClock}

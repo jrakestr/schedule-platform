@@ -103,54 +103,56 @@ export function CoverageTab({
             : "Offered calls vs Voice headcount by 30-min interval. Hover (?) on stat tiles for definitions."
           }
           toolbar={
-            <div className="flex flex-wrap gap-2 items-center">
-              <div className="inline-flex gap-1 bg-muted p-1 rounded-md">
-                <Button
-                  variant={viewMode === "proposed" ? "default" : "ghost"}
-                  size="sm"
-                  className="h-7 text-xs rounded-sm"
-                  onClick={() => setViewMode("proposed")}
-                >
-                  Proposed
-                </Button>
-                <Button
-                  variant={viewMode === "legacy" ? "default" : "ghost"}
-                  size="sm"
-                  className="h-7 text-xs rounded-sm"
-                  onClick={() => setViewMode("legacy")}
-                >
-                  Current/Legacy
-                </Button>
-                <Button
-                  variant={viewMode === "compare" ? "default" : "ghost"}
-                  size="sm"
-                  className="h-7 text-xs rounded-sm"
-                  onClick={() => setViewMode("compare")}
-                >
-                  Compare Both
-                </Button>
+            <div className="flex w-full min-w-0 flex-col gap-2.5">
+              <div className="flex flex-wrap items-center gap-2">
+                <div className="inline-flex gap-1 bg-muted p-1 rounded-md">
+                  <Button
+                    variant={viewMode === "proposed" ? "default" : "ghost"}
+                    size="sm"
+                    className="h-7 text-xs rounded-sm"
+                    onClick={() => setViewMode("proposed")}
+                  >
+                    Proposed
+                  </Button>
+                  <Button
+                    variant={viewMode === "legacy" ? "default" : "ghost"}
+                    size="sm"
+                    className="h-7 text-xs rounded-sm"
+                    onClick={() => setViewMode("legacy")}
+                  >
+                    Current/Legacy
+                  </Button>
+                  <Button
+                    variant={viewMode === "compare" ? "default" : "ghost"}
+                    size="sm"
+                    className="h-7 text-xs rounded-sm"
+                    onClick={() => setViewMode("compare")}
+                  >
+                    Compare Both
+                  </Button>
+                </div>
+
+                <div className="inline-flex gap-1 bg-muted p-1 rounded-md">
+                  <Button
+                    variant={metricMode === "share" ? "default" : "ghost"}
+                    size="sm"
+                    className="h-7 text-xs rounded-sm"
+                    onClick={() => setMetricMode("share")}
+                  >
+                    % Share
+                  </Button>
+                  <Button
+                    variant={metricMode === "raw" ? "default" : "ghost"}
+                    size="sm"
+                    className="h-7 text-xs rounded-sm"
+                    onClick={() => setMetricMode("raw")}
+                  >
+                    Raw Counts
+                  </Button>
+                </div>
               </div>
 
-              <div className="inline-flex gap-1 bg-muted p-1 rounded-md">
-                <Button
-                  variant={metricMode === "share" ? "default" : "ghost"}
-                  size="sm"
-                  className="h-7 text-xs rounded-sm"
-                  onClick={() => setMetricMode("share")}
-                >
-                  % Share
-                </Button>
-                <Button
-                  variant={metricMode === "raw" ? "default" : "ghost"}
-                  size="sm"
-                  className="h-7 text-xs rounded-sm"
-                  onClick={() => setMetricMode("raw")}
-                >
-                  Raw Counts
-                </Button>
-              </div>
-
-              <DayTabs day={day} onChange={setDay} />
+              <DayTabs day={day} onChange={setDay} className="w-full" />
             </div>
           }
         >

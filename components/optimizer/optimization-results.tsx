@@ -16,6 +16,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { compareOptimizations } from "@/lib/compute/optimization-metrics";
+import { ShiftScheduleSummary } from "@/components/optimizer/shift-schedule-summary";
 import { formatCurrency } from "@/lib/utils/formatters"; // Moved to shared utilities
 import type { Snapshot } from "@/lib/data/types";
 
@@ -137,37 +138,7 @@ export function OptimizationResults({
         </div>
       </SectionCard>
 
-      {comparison.shiftCountChanges.length > 0 && (
-        <SectionCard
-          title="Shift Type Changes"
-          description="Counts grouped by shift type between baseline and proposed roster."
-        >
-          <div className="rounded-md border overflow-hidden">
-            <Table>
-              <TableHeader>
-                <TableRow className="bg-muted/40 hover:bg-muted/40">
-                  <TableHead className="text-xs">Shift Type</TableHead>
-                  <TableHead className="text-xs text-right">Baseline</TableHead>
-                  <TableHead className="text-xs text-right">Proposed</TableHead>
-                  <TableHead className="text-xs text-right w-20">Δ</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {comparison.shiftCountChanges.map((row) => (
-                  <TableRow key={row.shiftType}>
-                    <TableCell className="text-xs font-medium">{row.label}</TableCell>
-                    <TableCell className="text-xs text-right">{row.baselineCount}</TableCell>
-                    <TableCell className="text-xs text-right">{row.proposedCount}</TableCell>
-                    <TableCell className="text-xs text-right">
-                      <MetricDeltaBadge delta={row.delta} decimals={0} />
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
-        </SectionCard>
-      )}
+      <ShiftScheduleSummary proposed={proposed} />
 
       <SectionCard
         title="Agent Assignment Changes"

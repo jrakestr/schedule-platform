@@ -1,9 +1,16 @@
 import { connection, NextRequest, NextResponse } from "next/server";
 import { normalizeSnapshotPods } from "@/lib/data/normalize-snapshot";
-import { createWriteClient } from "@/lib/supabase/server";
+import {
+  createWriteClient,
+  getAuthedUser,
+  unauthorizedResponse,
+} from "@/lib/supabase/server";
 
 export async function GET(request: NextRequest) {
   await connection();
+
+  const user = await getAuthedUser();
+  if (!user) return unauthorizedResponse();
 
   try {
     const id = request.nextUrl.searchParams.get("id");
@@ -21,14 +28,23 @@ export async function GET(request: NextRequest) {
     const { data, error } = await supabase
       .rpc("get_optimization_status", { target_id: id });
 
-    if (error || !data || data.length === 0) {
+    if (error) {
       return NextResponse.json(
-        { ok: false, error: "Optimization run not found", details: error?.message },
+        { ok: false, error: "Optimization run not found", details: error.message },
         { status: 404 }
       );
     }
 
-    const run = { ...data[0] };
+    // Defensive: the RPC may return either a row array or a single composite row.
+    const row: any = Array.isArray(data) ? data[0] : data;
+    if (!row) {
+      return NextResponse.json(
+        { ok: false, error: "Optimization run not found" },
+        { status: 404 }
+      );
+    }
+
+    const run = { ...row };
     if (!includePayload) {
       delete run.payload;
     } else if (run.payload) {

@@ -37,6 +37,20 @@ export function normalizeSnapshotPods(snapshot: Snapshot): Snapshot {
   return { ...snapshot, pods };
 }
 
+/** Supervisors are not optimized — always take schedule + agent rows from baseline. */
+export function mergeBaselineSupervisors(
+  snapshot: Snapshot,
+  baseline: Snapshot,
+): Snapshot {
+  const rosterAgents = snapshot.agents.filter((a) => a.role !== "Supervisor");
+  const supervisors = baseline.agents.filter((a) => a.role === "Supervisor");
+  return normalizeSnapshotPods({
+    ...snapshot,
+    supervisor_schedule: baseline.supervisor_schedule,
+    agents: [...rosterAgents, ...supervisors],
+  });
+}
+
 /** Maps a legacy themed label (or passthrough Team N) for URL/deep links. */
 export function resolveCanonicalPodName(name: string): string {
   if (CANONICAL_POD_RE.test(name)) return name;

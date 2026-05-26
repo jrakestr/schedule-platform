@@ -33,7 +33,13 @@ import {
   WorkLimitationsPanel,
   DEFAULT_WORK_LIMITATIONS,
 } from "@/components/optimizer/work-limitations-panel";
-import type { WorkLimitations } from "@/lib/data/schemas";
+import type { FlexShiftAssignment, WorkLimitations } from "@/lib/data/schemas";
+
+const DEFAULT_FLEX_SHIFTS: FlexShiftAssignment = {
+  enabled: false,
+  flexEarlyMaxCount: 0,
+  cleanupLateMaxCount: 0,
+};
 
 type RunState = "idle" | "launching" | "polling" | "succeeded" | "failed";
 
@@ -344,6 +350,85 @@ function SubsectionLabel({ icon, children }: { icon?: ReactNode; children: React
   );
 }
 
+function FlexShiftsPanel({
+  value,
+  onChange,
+  disabled,
+}: {
+  value: FlexShiftAssignment;
+  onChange: (next: FlexShiftAssignment) => void;
+  disabled?: boolean;
+}) {
+  const setEnabled = (enabled: boolean) =>
+    onChange({ ...value, enabled });
+  const setCount = (key: "flexEarlyMaxCount" | "cleanupLateMaxCount", n: number) => {
+    const safe = Number.isFinite(n) ? Math.max(0, Math.min(50, Math.round(n))) : 0;
+    onChange({ ...value, [key]: safe });
+  };
+
+  const inputCls =
+    "h-7 w-16 rounded-md border border-border/70 bg-background px-2 font-mono text-xs tabular-nums shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50";
+
+  return (
+    <fieldset
+      disabled={disabled}
+      className="space-y-2 rounded-lg border border-border/70 bg-card px-3 py-2.5 shadow-sm disabled:opacity-60"
+    >
+      <div className="flex items-center justify-between text-xs">
+        <label className="flex cursor-pointer items-center gap-2 text-foreground">
+          <input
+            type="checkbox"
+            checked={value.enabled}
+            disabled={disabled}
+            onChange={(e) => setEnabled(e.target.checked)}
+            className="h-3.5 w-3.5 rounded border-input text-primary focus:ring-primary cursor-pointer"
+          />
+          Allow flex / cleanup variants
+        </label>
+        {!value.enabled && (
+          <span className="text-[11px] text-muted-foreground">off</span>
+        )}
+      </div>
+
+      {value.enabled && (
+        <>
+          <div className="grid grid-cols-[1fr_auto] items-center gap-x-3 gap-y-1 text-xs">
+            <div className="space-y-0.5">
+              <div className="font-medium text-foreground">Flex-early shifts</div>
+              <div className="text-[10px] text-muted-foreground">Start 2h earlier than the base template</div>
+            </div>
+            <input
+              type="number"
+              min={0}
+              max={50}
+              step={1}
+              value={value.flexEarlyMaxCount}
+              onChange={(e) => setCount("flexEarlyMaxCount", e.target.valueAsNumber)}
+              className={inputCls}
+            />
+          </div>
+
+          <div className="grid grid-cols-[1fr_auto] items-center gap-x-3 gap-y-1 text-xs">
+            <div className="space-y-0.5">
+              <div className="font-medium text-foreground">Cleanup-late shifts</div>
+              <div className="text-[10px] text-muted-foreground">Extend 2h past the base template end</div>
+            </div>
+            <input
+              type="number"
+              min={0}
+              max={50}
+              step={1}
+              value={value.cleanupLateMaxCount}
+              onChange={(e) => setCount("cleanupLateMaxCount", e.target.valueAsNumber)}
+              className={inputCls}
+            />
+          </div>
+        </>
+      )}
+    </fieldset>
+  );
+}
+
 function FieldGroup({
   label,
   htmlFor,
@@ -444,6 +529,7 @@ export function OptimizerTab({ snapshot, baselineSnapshot, onUpdateSnapshot, opt
   const [workLimitations, setWorkLimitations] = useState<WorkLimitations>(
     DEFAULT_WORK_LIMITATIONS,
   );
+  const [flexShifts, setFlexShifts] = useState<FlexShiftAssignment>(DEFAULT_FLEX_SHIFTS);
 
   useEffect(() => {
     setCustomCubicleCap(cubicleCap);
@@ -627,6 +713,7 @@ export function OptimizerTab({ snapshot, baselineSnapshot, onUpdateSnapshot, opt
       notes: notes.trim() || null,
       cubicleCap: toSafeCubicleCap(customCubicleCap),
       workLimitations,
+      flexShifts,
       shifts: {
         sixHour: {
           enabled: shifts.sixHour.enabled,
@@ -687,7 +774,6 @@ export function OptimizerTab({ snapshot, baselineSnapshot, onUpdateSnapshot, opt
             setRunName("");
             setNotes("");
             await setOptId(runId);
-            router.refresh();
             setIsSolving(false);
           } else if (run.status === "failed") {
             setRunState("failed");
@@ -874,6 +960,15 @@ export function OptimizerTab({ snapshot, baselineSnapshot, onUpdateSnapshot, opt
               <WorkLimitationsPanel
                 value={workLimitations}
                 onChange={setWorkLimitations}
+                disabled={isSolving || isViewer}
+              />
+            </div>
+
+            <div className="space-y-3">
+              <SubsectionLabel>Flex shifts</SubsectionLabel>
+              <FlexShiftsPanel
+                value={flexShifts}
+                onChange={setFlexShifts}
                 disabled={isSolving || isViewer}
               />
             </div>
@@ -1194,7 +1289,9 @@ export function OptimizerTab({ snapshot, baselineSnapshot, onUpdateSnapshot, opt
                             variant={isActive ? "outline" : "default"}
                             size="sm"
                             className="h-7 px-2.5 text-xs"
-                            onClick={() => setOptId(isActive ? "" : opt.id)}
+                            onClick={async () => {
+                              await setOptId(isActive ? "" : opt.id);
+                            }}
                           >
                             {isActive ? "Deselect" : "Overlay"}
                           </Button>

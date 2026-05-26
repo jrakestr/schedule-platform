@@ -68,7 +68,7 @@ export function SiteHeader({
   const supOK = snapshot.supervisor_schedule.min_coverage >= 1;
 
   const validOptimizations = useMemo(() => {
-    return optimizations.filter((opt) => opt.id);
+    return optimizations.filter((opt) => opt.id && opt.status === "succeeded");
   }, [optimizations]);
 
   const activeRun = useMemo(
@@ -121,7 +121,9 @@ export function SiteHeader({
               <div className="flex items-center gap-1.5">
                 <Select
                   value={optId || "default"}
-                  onValueChange={(val) => setOptId(val === "default" ? "" : val)}
+                  onValueChange={async (val) => {
+                    await setOptId(val === "default" ? "" : val);
+                  }}
                 >
                   <SelectTrigger className="w-[180px] h-9 text-xs surface-inset">
                     <SelectValue placeholder="Default Baseline" />

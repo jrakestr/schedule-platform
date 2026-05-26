@@ -6,7 +6,11 @@ export async function fetchOptimizationSnapshot(optId: string): Promise<Snapshot
   );
   const body = await response.json().catch(() => ({}));
   if (!response.ok || !body.ok || !body.snapshot) {
-    throw new Error(body.error || `Failed to load optimization snapshot (${response.status}).`);
+    throw new Error(
+      body.details ||
+        body.error ||
+        `Failed to load optimization snapshot (${response.status}).`,
+    );
   }
   return body.snapshot as Snapshot;
 }

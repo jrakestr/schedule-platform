@@ -14,7 +14,6 @@ export interface ParsedSegment {
 
 export function parseSegs(structure: string | null | undefined): ParsedSegment[] {
   if (!structure) return [];
-  if (!structure.includes("|") && !structure.includes("Voice")) return [];
   const toMin = (t: string): number => {
     const [h, m] = t.split(":").map(Number);
     return h * 60 + m;
@@ -45,16 +44,34 @@ export function parseSegs(structure: string | null | undefined): ParsedSegment[]
   return out;
 }
 
+const DOW_IDX: Record<DOW, number> = {
+  Mon: 0,
+  Tue: 1,
+  Wed: 2,
+  Thu: 3,
+  Fri: 4,
+  Sat: 5,
+  Sun: 6,
+};
+
 export function agentSupply(agents: Agent[], day: DOW, leadPct: number): number[] {
   const out = new Array(48).fill(0);
+  const targetDayIdx = DOW_IDX[day];
   for (const a of agents) {
-    if (!a.works_days?.includes(day)) continue;
+    const startDays = a.works_days ?? [];
+    if (startDays.length === 0) continue;
     const weight = a.position === "Lead" ? leadPct : 1;
     const mins = new Array(48).fill(0);
-    for (const seg of parseSegs(a.structure)) {
-      if (seg.kind !== "Voice") continue;
-      for (let m = seg.start; m < seg.end; m++) {
-        mins[Math.floor((m % 1440) / 30)]++;
+    for (const startDay of startDays) {
+      const startDayIdx = DOW_IDX[startDay];
+      if (startDayIdx === undefined) continue;
+      for (const seg of parseSegs(a.structure)) {
+        if (seg.kind !== "Voice") continue;
+        for (let m = seg.start; m < seg.end; m++) {
+          const rotated = (startDayIdx + Math.floor(m / 1440)) % 7;
+          if (rotated !== targetDayIdx) continue;
+          mins[Math.floor((m % 1440) / 30)]++;
+        }
       }
     }
     mins.forEach((v: number, i: number) => {

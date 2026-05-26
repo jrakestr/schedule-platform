@@ -59,7 +59,26 @@ async function readOptimizationFromSupabase(optId: string): Promise<SnapshotReco
     return null;
   }
   if (!data) return null;
-  return { payload: data as Snapshot, taken_at: new Date().toISOString() };
+
+  // The RPC shape is uncertain across migrations: it may return
+  //   Snapshot                           (bare payload)
+  //   { payload: Snapshot, taken_at? }   (row-wrapped, like get_baseline_platform_snapshot)
+  //   [{ payload: Snapshot, ... }]       (array of rows)
+  // Probe defensively and validate that we ended up with something
+  // shaped like a Snapshot before returning — silently producing
+  // `undefined.meta` deep in the UI is worse than 404-falling back to baseline.
+  const row: any = Array.isArray(data) ? data[0] : data;
+  if (!row) return null;
+  const payload = (row.payload ?? row) as Snapshot;
+  const takenAt: string =
+    row.taken_at ?? row.created_at ?? new Date().toISOString();
+  if (!payload || typeof payload !== "object" || !("meta" in payload)) {
+    console.error(
+      `get_optimization returned an unexpected shape for ${optId}; falling back.`,
+    );
+    return null;
+  }
+  return { payload, taken_at: takenAt };
 }
 
 // Local-file fallback. Used in dev (no DB needed to run `next dev`) and as a
@@ -106,12 +125,10 @@ async function readFromLocalFile(): Promise<SnapshotRecord | null> {
   }
 }
 
-async function loadSnapshotRecord(optId?: string): Promise<SnapshotRecord> {
-  if (optId) {
-    const optRecord = await readOptimizationFromSupabase(optId);
-    if (optRecord) return optRecord;
-    console.warn(`Optimization run ${optId} not found, falling back to default baseline.`);
-  }
+async function loadBaselineSnapshotRecord(): Promise<SnapshotRecord> {
+  "use cache";
+  cacheTag(SNAPSHOT_TAG);
+  cacheLife("default");
 
   const fromDb = await readFromSupabase();
   const fromFile = await readFromLocalFile();
@@ -126,13 +143,49 @@ async function loadSnapshotRecord(optId?: string): Promise<SnapshotRecord> {
 }
 
 export async function getLatestSnapshot(optId?: string): Promise<Snapshot> {
-  const record = await loadSnapshotRecord(optId);
+  if (optId) {
+    const optRecord = await readOptimizationFromSupabase(optId);
+    if (optRecord) return normalizeSnapshotPods(optRecord.payload);
+    console.warn(`Optimization run ${optId} not found, falling back to default baseline.`);
+  }
+
+  const record = await loadBaselineSnapshotRecord();
   return normalizeSnapshotPods(record.payload);
+}
+
+/** Uncached read for client roster switching — bypasses `use cache` staleness. */
+export async function getLiveSnapshot(optId?: string): Promise<Snapshot> {
+  if (optId) {
+    const optRecord = await readOptimizationFromSupabase(optId);
+    if (optRecord) return normalizeSnapshotPods(optRecord.payload);
+    throw new Error(`Optimization run ${optId} not found or not succeeded.`);
+  }
+
+  const fromDb = await readFromSupabase();
+  const fromFile = await readFromLocalFile();
+
+  if (fromDb && snapshotHasAbandonVolume(fromDb.payload)) {
+    return normalizeSnapshotPods(fromDb.payload);
+  }
+  if (fromFile && snapshotHasAbandonVolume(fromFile.payload)) {
+    return normalizeSnapshotPods(fromFile.payload);
+  }
+  if (fromDb) return normalizeSnapshotPods(fromDb.payload);
+  if (fromFile) return normalizeSnapshotPods(fromFile.payload);
+
+  throw new Error(
+    "No snapshot available. In production set NEXT_PUBLIC_SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY and run `make publish-platform`.",
+  );
 }
 
 export async function getSnapshotTakenAt(optId?: string): Promise<string | null> {
   try {
-    const record = await loadSnapshotRecord(optId);
+    if (optId) {
+      const optRecord = await readOptimizationFromSupabase(optId);
+      if (optRecord) return optRecord.taken_at;
+      return null;
+    }
+    const record = await loadBaselineSnapshotRecord();
     return record.taken_at;
   } catch {
     return null;

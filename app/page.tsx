@@ -16,17 +16,14 @@ export default function Page({ searchParams }: PageProps) {
 }
 
 async function PlatformLoader({ searchParams }: { searchParams: Promise<{ opt_id?: string }> }) {
-  const resolvedParams = await searchParams;
-  const optId = resolvedParams.opt_id;
+  await searchParams;
 
-  const [snapshot, baselineSnapshot, optimizations] = await Promise.all([
-    getLatestSnapshot(optId),
+  const [baselineSnapshot, optimizations] = await Promise.all([
     getLatestSnapshot(),
     listOptimizations(),
   ]);
   return (
     <PlatformShell
-      snapshot={snapshot}
       baselineSnapshot={baselineSnapshot}
       optimizations={optimizations}
     />

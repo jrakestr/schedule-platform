@@ -17,6 +17,8 @@ const MEMBER_ROW_H = 20;
 
 const SUP_SHIFT_COLOR: Record<string, string> = {
   DAY: "#0891b2",
+  EARLY: "#0d9488",
+  LATE: "#6366f1",
   NIGHT: "#475569",
 };
 
@@ -358,16 +360,30 @@ export function SupervisorDutyTimeline({
         <span className="inline-flex items-center gap-1.5">
           <span
             className="inline-block h-2 w-2 rounded-sm"
+            style={{ backgroundColor: SUP_SHIFT_COLOR.EARLY }}
+          />
+          Early · before 06:00
+        </span>
+        <span className="inline-flex items-center gap-1.5">
+          <span
+            className="inline-block h-2 w-2 rounded-sm"
             style={{ backgroundColor: SUP_SHIFT_COLOR.DAY }}
           />
-          DAY · 06:00–18:00
+          Day · 06:00–18:00
+        </span>
+        <span className="inline-flex items-center gap-1.5">
+          <span
+            className="inline-block h-2 w-2 rounded-sm"
+            style={{ backgroundColor: SUP_SHIFT_COLOR.LATE }}
+          />
+          Late · from 18:00
         </span>
         <span className="inline-flex items-center gap-1.5">
           <span
             className="inline-block h-2 w-2 rounded-sm"
             style={{ backgroundColor: SUP_SHIFT_COLOR.NIGHT }}
           />
-          NIGHT · 18:00–06:00
+          Overnight
         </span>
         <span className="inline-flex items-center gap-1.5">
           <span className="inline-block h-2 w-2 rounded-sm bg-emerald-400/60" />

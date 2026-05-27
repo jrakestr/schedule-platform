@@ -1,6 +1,6 @@
 import { balanceTone, type BalanceTone } from "@/lib/compute/colors";
 import { getLegacyCsaSupply } from "@/lib/compute/legacy-supply";
-import { csaSupply } from "@/lib/compute/supply";
+import { csaSupply, manualRosterSupply } from "@/lib/compute/supply";
 import type { DOW, FunctionName, Snapshot } from "@/lib/data/types";
 import { sum } from "@/lib/utils";
 
@@ -16,6 +16,7 @@ export interface IntervalSeries {
   ahtSeconds: number[];
   proposed: number[];
   legacy: number[];
+  manual: number[];
 }
 
 export interface HourDistributionRow {
@@ -28,6 +29,8 @@ export interface HourDistributionRow {
   requiredStaff: number;
   proposedStaff: number;
   legacyStaff: number;
+  /** Manual roster (SDS + Next Day + Supervisor) on-shift headcount for the hour. */
+  manualStaff: number;
   /** Proposed CSA headcount minus Erlang-required agents (negative = understaffed). */
   staffGap: number;
   /** Legacy CSA headcount minus Erlang-required agents. */
@@ -46,6 +49,7 @@ export interface DayDistributionStats {
   ahtSeconds: number[];
   proposed: number[];
   legacy: number[];
+  manual: number[];
   dayCalls: number;
   dayAbandoned: number;
   dayAbandonRate: number;
@@ -133,7 +137,8 @@ export function getIntervalSeries(
       ? offCombined
       : snapshot.volume.offered_per_interval[fn][day];
   const proposedCombined = csaSupply(snapshot.agents, day, leadPct);
-  const legacyCombined = getLegacyCsaSupply(day);
+  const legacyCombined = getLegacyCsaSupply(day, leadPct);
+  const manualCombined = manualRosterSupply(snapshot.agents, day);
   const proposed =
     fn === "Combined"
       ? proposedCombined
@@ -142,8 +147,12 @@ export function getIntervalSeries(
     fn === "Combined"
       ? legacyCombined
       : scaleSupplyByFunction(legacyCombined, offCombined, offFn);
+  const manual =
+    fn === "Combined"
+      ? manualCombined
+      : scaleSupplyByFunction(manualCombined, offCombined, offFn);
 
-  return { ...volume, proposed, legacy };
+  return { ...volume, proposed, legacy, manual };
 }
 
 function matchedShareAtIntervalLevel(
@@ -179,6 +188,7 @@ function buildHourlyRows(
   hourlyAht: Array<number | null>,
   hourlyProposed: number[],
   hourlyLegacy: number[],
+  hourlyManual: number[],
 ): HourDistributionRow[] {
   const dayCalls = sum(hourlyOff) || 1;
   const dayProposed = sum(hourlyProposed) || 1;
@@ -190,6 +200,7 @@ function buildHourlyRows(
     const requiredStaff = hourlyReq[idx];
     const proposedStaff = hourlyProposed[idx];
     const legacyStaff = hourlyLegacy[idx];
+    const manualStaff = hourlyManual[idx];
     const staffGap = proposedStaff - requiredStaff;
     const legacyStaffGap = legacyStaff - requiredStaff;
     const volShare = calls / dayCalls;
@@ -215,6 +226,7 @@ function buildHourlyRows(
       requiredStaff,
       proposedStaff,
       legacyStaff,
+      manualStaff,
       staffGap,
       legacyStaffGap,
       volShare,
@@ -251,7 +263,7 @@ export function computeDayDistribution(
   fn: FunctionName,
   leadPct: number,
 ): DayDistributionStats {
-  const { offered, abandoned, required, ahtSeconds, proposed, legacy } =
+  const { offered, abandoned, required, ahtSeconds, proposed, legacy, manual } =
     getIntervalSeries(snapshot, day, fn, leadPct);
 
   const hourlyOff = Array.from(
@@ -281,6 +293,10 @@ export function computeDayDistribution(
     { length: 24 },
     (_, h) => (legacy[h * 2] + legacy[h * 2 + 1]) / 2,
   );
+  const hourlyManual = Array.from(
+    { length: 24 },
+    (_, h) => (manual[h * 2] + manual[h * 2 + 1]) / 2,
+  );
 
   const rows = buildHourlyRows(
     snapshot.meta.hours,
@@ -290,6 +306,7 @@ export function computeDayDistribution(
     hourlyAht,
     hourlyProposed,
     hourlyLegacy,
+    hourlyManual,
   );
 
   const dayAbandoned = sum(abandoned);
@@ -341,6 +358,7 @@ export function computeDayDistribution(
     ahtSeconds,
     proposed,
     legacy,
+    manual,
     dayCalls,
     dayAbandoned,
     dayAbandonRate: dayCalls ? dayAbandoned / dayCalls : 0,

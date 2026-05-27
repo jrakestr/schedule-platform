@@ -17,7 +17,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { csaSupply, schedulerSupply } from "@/lib/compute/supply";
+import { csaSupply, schedulerSupply, manualRosterSupply } from "@/lib/compute/supply";
 import { getLegacyCsaSupply } from "@/lib/compute/legacy-supply";
 import {
   WFM_DATA_SOURCE,
@@ -58,19 +58,35 @@ export function CoverageTab({
   const stats = useMemo(() => {
     const off = snapshot.volume.offered_per_interval.Combined[day];
     const sup = csaSupply(snapshot.agents, day, leadPct);
-    const legacySup = getLegacyCsaSupply(day);
+    const legacySup = getLegacyCsaSupply(day, leadPct);
+    const manualSup = manualRosterSupply(snapshot.agents, day);
     const offered = sum(off);
     const staff = sum(sup);
     const legacyStaff = sum(legacySup);
     const offTotal = offered || 1;
     const supTotal = staff || 1;
-    let matchedShare = 0;
+    const legacyTotal = legacyStaff || 1;
+    let matchedShareProposed = 0;
+    let matchedShareLegacy = 0;
     for (let i = 0; i < 48; i++) {
-      matchedShare += Math.min(off[i] / offTotal, sup[i] / supTotal);
+      matchedShareProposed += Math.min(off[i] / offTotal, sup[i] / supTotal);
+      matchedShareLegacy += Math.min(off[i] / offTotal, legacySup[i] / legacyTotal);
     }
     const peakOffShare = Math.max(...off.map((v) => (v / offTotal) * 100));
     const peakSupShare = Math.max(...sup.map((v) => (v / supTotal) * 100));
-    return { off, sup, legacySup, offered, staff, legacyStaff, matchedShare, peakOffShare, peakSupShare };
+    return {
+      off,
+      sup,
+      legacySup,
+      manualSup,
+      offered,
+      staff,
+      legacyStaff,
+      matchedShareProposed,
+      matchedShareLegacy,
+      peakOffShare,
+      peakSupShare,
+    };
   }, [snapshot, day, leadPct]);
 
   return (
@@ -179,15 +195,29 @@ export function CoverageTab({
             />
             <StatTile
               label="Volume-matched share"
-              value={pct(stats.matchedShare)}
-              tooltip={WFM_VOLUME_MATCHED}
-              tone={
-                stats.matchedShare >= 0.8
-                  ? "text-emerald-700 dark:text-emerald-400"
-                  : stats.matchedShare >= 0.6
-                    ? "text-amber-700 dark:text-amber-400"
-                    : "text-rose-700 dark:text-rose-400"
+              value={pct(
+                viewMode === "legacy"
+                  ? stats.matchedShareLegacy
+                  : viewMode === "compare"
+                    ? stats.matchedShareProposed
+                    : stats.matchedShareProposed,
+              )}
+              tooltip={
+                viewMode === "compare"
+                  ? `${WFM_VOLUME_MATCHED} Proposed: ${pct(stats.matchedShareProposed)} · Current: ${pct(stats.matchedShareLegacy)}.`
+                  : WFM_VOLUME_MATCHED
               }
+              tone={(() => {
+                const value =
+                  viewMode === "legacy"
+                    ? stats.matchedShareLegacy
+                    : stats.matchedShareProposed;
+                return value >= 0.8
+                  ? "text-emerald-700 dark:text-emerald-400"
+                  : value >= 0.6
+                    ? "text-amber-700 dark:text-amber-400"
+                    : "text-rose-700 dark:text-rose-400";
+              })()}
             />
           </div>
 
@@ -195,6 +225,7 @@ export function CoverageTab({
             offered={stats.off}
             supplied={stats.sup}
             legacySupplied={stats.legacySup}
+            manualSupplied={stats.manualSup}
             viewMode={viewMode}
             intervals={snapshot.meta.intervals}
             metricMode={metricMode}

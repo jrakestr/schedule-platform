@@ -9,6 +9,7 @@ export const TAB_LABELS = {
   cubicles: "Cubicles",
   roster: "Roster",
   optimizer: "Simple Optimizer",
+  "manual-schedules": "Manual Schedules",
 } as const;
 
 // 2. Derive the TabId type directly from the keys of TAB_LABELS.
@@ -26,6 +27,7 @@ export const TAB_IDS = [
   "supervisor",
   "cubicles",
   "roster",
+  "manual-schedules",
 ] as const satisfies readonly TabId[];
 
 /**

@@ -18,6 +18,7 @@ interface ShapeChartProps {
   offered: number[];
   supplied: number[];
   legacySupplied?: number[];
+  manualSupplied?: number[];
   viewMode?: "proposed" | "legacy" | "compare";
   intervals: string[];
   metricMode: "share" | "raw";
@@ -41,11 +42,13 @@ function ShapeTooltip({ active, payload, label, metricMode }: ShapeTooltipProps)
         if (key === "volume") return `${value.toFixed(1)}% calls`;
         if (key === "staff") return `${value.toFixed(1)}% CSAs`;
         if (key === "legacyStaff") return `${value.toFixed(1)}% legacy CSAs`;
+        if (key === "manualStaff") return `${value.toFixed(1)}% schedulers + supervisors`;
         return null;
       }
       if (key === "rawVolume") return `${Math.round(value)} calls`;
       if (key === "rawStaff") return `${value.toFixed(1)} CSAs`;
       if (key === "rawLegacyStaff") return `${value.toFixed(1)} legacy CSAs`;
+      if (key === "rawManualStaff") return `${value.toFixed(1)} schedulers + supervisors`;
       return null;
     })
     .filter((line): line is string => Boolean(line));
@@ -66,6 +69,7 @@ export function ShapeChart({
   offered,
   supplied,
   legacySupplied,
+  manualSupplied,
   viewMode = "proposed",
   intervals,
   metricMode,
@@ -73,15 +77,18 @@ export function ShapeChart({
   const offTotal = offered.reduce((s, v) => s + v, 0) || 1;
   const supTotal = supplied.reduce((s, v) => s + v, 0) || 1;
   const legacyTotal = legacySupplied ? legacySupplied.reduce((s, v) => s + v, 0) || 1 : 1;
+  const manualTotal = manualSupplied ? manualSupplied.reduce((s, v) => s + v, 0) || 1 : 1;
 
   const data = intervals.map((label, i) => ({
     interval: label,
     volume: (offered[i] / offTotal) * 100,
     staff: (supplied[i] / supTotal) * 100,
     legacyStaff: legacySupplied ? (legacySupplied[i] / legacyTotal) * 100 : 0,
+    manualStaff: manualSupplied ? (manualSupplied[i] / manualTotal) * 100 : 0,
     rawVolume: offered[i],
     rawStaff: supplied[i],
     rawLegacyStaff: legacySupplied ? legacySupplied[i] : 0,
+    rawManualStaff: manualSupplied ? manualSupplied[i] : 0,
   }));
 
   const ticks = ["00:00", "03:00", "06:00", "09:00", "12:00", "15:00", "18:00", "21:00"];
@@ -176,6 +183,18 @@ export function ShapeChart({
               name={metricMode === "share" ? "Legacy CSAs" : "Legacy CSAs"}
               stroke="#ea580c"
               strokeWidth={2}
+              dot={false}
+              yAxisId={metricMode === "raw" ? "right" : "left"}
+            />
+          )}
+          {manualSupplied && (
+            <Line
+              type="monotone"
+              dataKey={metricMode === "share" ? "manualStaff" : "rawManualStaff"}
+              name="Schedulers + Supervisors (manual)"
+              stroke="#10b981"
+              strokeWidth={2}
+              strokeDasharray="5 3"
               dot={false}
               yAxisId={metricMode === "raw" ? "right" : "left"}
             />

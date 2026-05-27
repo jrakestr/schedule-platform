@@ -28,6 +28,7 @@ import { ShiftsTab } from "@/components/tabs/shifts";
 import { CubiclesTab } from "@/components/tabs/cubicles";
 import { RosterTab } from "@/components/tabs/roster";
 import { OptimizerTab } from "@/components/tabs/optimizer";
+import { ManualSchedulesTab } from "@/components/tabs/manual-schedules";
 import { DriversPlaceholder } from "@/components/tabs/drivers-placeholder";
 
 import { AgentProfilePanel } from "@/components/agent/agent-profile-panel";
@@ -133,6 +134,8 @@ export function PlatformShell({
             optimizations={optimizations}
           />
         );
+      case "manual-schedules":
+        return <ManualSchedulesTab />;
       default:
         return null;
     }

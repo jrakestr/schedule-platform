@@ -54,26 +54,86 @@ const DOW_IDX: Record<DOW, number> = {
   Sun: 6,
 };
 
-export function agentSupply(agents: Agent[], day: DOW, leadPct: number): number[] {
-  const out = new Array(48).fill(0);
+function clockToMinutes(clock: string): number {
+  const [h, m] = clock.split(":").map(Number);
+  return h * 60 + (m || 0);
+}
+
+/** Split gross legacy shift spans into Voice segments (30-min lunch when ≥ 6.5h). */
+function legacyAssignmentVoiceSpans(
+  startMin: number,
+  endMin: number,
+): Array<{ start: number; end: number }> {
+  if (endMin <= startMin) endMin += 1440;
+  const duration = endMin - startMin;
+  if (duration < 390) return [{ start: startMin, end: endMin }];
+  const lunchStart = startMin + Math.floor((duration - 30) / 2);
+  return [
+    { start: startMin, end: lunchStart },
+    { start: lunchStart + 30, end: endMin },
+  ];
+}
+
+function accumulateVoiceMinutes(
+  mins: number[],
+  targetDayIdx: number,
+  startDayIdx: number,
+  startMin: number,
+  endMin: number,
+): void {
+  if (endMin <= startMin) endMin += 1440;
+  for (let m = startMin; m < endMin; m++) {
+    const rotated = (startDayIdx + Math.floor(m / 1440)) % 7;
+    if (rotated !== targetDayIdx) continue;
+    mins[Math.floor((m % 1440) / 30)]++;
+  }
+}
+
+/** Voice minutes per 30-min interval for one agent on one calendar day. */
+export function agentVoiceMinutesPerInterval(agent: Agent, day: DOW): number[] {
+  const mins = new Array(48).fill(0);
   const targetDayIdx = DOW_IDX[day];
-  for (const a of agents) {
-    const startDays = a.works_days ?? [];
-    if (startDays.length === 0) continue;
-    const weight = a.position === "Lead" ? leadPct : 1;
-    const mins = new Array(48).fill(0);
-    for (const startDay of startDays) {
-      const startDayIdx = DOW_IDX[startDay];
-      if (startDayIdx === undefined) continue;
-      for (const seg of parseSegs(a.structure)) {
-        if (seg.kind !== "Voice") continue;
-        for (let m = seg.start; m < seg.end; m++) {
-          const rotated = (startDayIdx + Math.floor(m / 1440)) % 7;
-          if (rotated !== targetDayIdx) continue;
-          mins[Math.floor((m % 1440) / 30)]++;
-        }
+
+  if (agent.assignments?.length && agent.structure === "legacy") {
+    for (const assignment of agent.assignments) {
+      const [startClock, endClock] = assignment.hours.split("-");
+      if (!startClock || !endClock) continue;
+      const startMin = clockToMinutes(startClock);
+      const endMin = clockToMinutes(endClock);
+      for (const span of legacyAssignmentVoiceSpans(startMin, endMin)) {
+        accumulateVoiceMinutes(
+          mins,
+          targetDayIdx,
+          assignment.weekday_idx,
+          span.start,
+          span.end,
+        );
       }
     }
+    return mins;
+  }
+
+  const startDays = agent.works_days ?? [];
+  for (const startDay of startDays) {
+    const startDayIdx = DOW_IDX[startDay];
+    if (startDayIdx === undefined) continue;
+    for (const seg of parseSegs(agent.structure)) {
+      if (seg.kind !== "Voice") continue;
+      accumulateVoiceMinutes(mins, targetDayIdx, startDayIdx, seg.start, seg.end);
+    }
+  }
+  return mins;
+}
+
+export function agentSupply(agents: Agent[], day: DOW, leadPct: number): number[] {
+  const out = new Array(48).fill(0);
+  for (const a of agents) {
+    const startDays = a.works_days ?? [];
+    const hasLegacyAssignments =
+      a.assignments?.length && a.structure === "legacy";
+    if (!hasLegacyAssignments && startDays.length === 0) continue;
+    const weight = a.position === "Lead" ? leadPct : 1;
+    const mins = agentVoiceMinutesPerInterval(a, day);
     mins.forEach((v: number, i: number) => {
       if (v >= 15) out[i] += weight;
     });
@@ -95,6 +155,19 @@ export function csaSupply(agents: Agent[], day: DOW, leadPct: number): number[] 
 
 export function schedulerSupply(agents: Agent[], day: DOW): number[] {
   return agentSupply(getSched(agents), day, 1);
+}
+
+export function getManualRoster(agents: Agent[]): Agent[] {
+  return agents.filter(
+    (a) => a.role === "NDS" || a.role === "SDS" || a.role === "Supervisor",
+  );
+}
+
+/** Combined supply for SDS + Next Day + Supervisor — the manually-managed
+ * roster. Overlaid on Coverage / Validation charts alongside the CSA
+ * optimized curve. */
+export function manualRosterSupply(agents: Agent[], day: DOW): number[] {
+  return agentSupply(getManualRoster(agents), day, 1);
 }
 
 export function hourlyFromHalfHours(a: number[]): number[] {

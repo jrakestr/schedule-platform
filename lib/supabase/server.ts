@@ -1,4 +1,7 @@
 import { createClient } from "@supabase/supabase-js";
+import { createServerClient as createSSRClient } from "@supabase/ssr";
+import { cookies } from "next/headers";
+import { NextResponse } from "next/server";
 
 // Mock Supabase client for local development fallback mode
 class MockQueryBuilder {
@@ -182,18 +185,19 @@ class MockSupabaseClient {
 // platform snapshot. Uses the publishable (anon) key.
 export function createReadClient() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const key =
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ??
-    process.env.SUPABASE_SERVICE_ROLE_KEY;
-    
+  // Read path uses the publishable anon key only. Falling back to the
+  // service-role key here would silently grant RLS-bypass to read queries
+  // whenever the anon key is misconfigured — refuse instead.
+  const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
   if (!key && process.env.NODE_ENV !== "production") {
     // If we have no keys and are in local mode, we return a mock reader
     return new MockSupabaseClient() as any;
   }
-  
+
   if (!url || !key) {
     throw new Error(
-      "Missing Supabase env vars NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY (or SUPABASE_SERVICE_ROLE_KEY as a fallback)",
+      "Missing Supabase env vars NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY",
     );
   }
   return createClient(url, key, {
@@ -221,9 +225,44 @@ export function createWriteClient() {
       "Missing Supabase server credentials. Ensure NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are set.",
     );
   }
+  // RPCs (insert_optimization, etc.) live in public schema. Do NOT set
+  // db.schema to analytics — PostgREST does not expose that schema (PGRST106).
   return createClient(url, key, {
     auth: { persistSession: false, autoRefreshToken: false },
-    db: { schema: "analytics" },
     global: { headers: { "x-application-name": "schedule-platform-api" } },
   });
+}
+
+// Server-side Supabase Auth session check for browser-initiated route handlers.
+// Reads cookies via `next/headers` and returns the authed user, or null when
+// no valid session is present. The handler is responsible for converting null
+// into a 401 response — use `unauthorizedResponse()` below for consistency.
+export async function getAuthedUser() {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  if (!url || !key) return null;
+
+  const cookieStore = await cookies();
+  const supabase = createSSRClient(url, key, {
+    cookies: {
+      getAll() {
+        return cookieStore.getAll();
+      },
+      setAll() {
+        // Route handlers verify auth read-only; refreshed tokens (if any) are
+        // not persisted back to the browser from these endpoints.
+      },
+    },
+  });
+
+  const { data, error } = await supabase.auth.getUser();
+  if (error || !data?.user) return null;
+  return data.user;
+}
+
+export function unauthorizedResponse() {
+  return NextResponse.json(
+    { ok: false, error: "Authentication required" },
+    { status: 401 },
+  );
 }

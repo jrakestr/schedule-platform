@@ -1,12 +1,11 @@
 "use client";
 
-import { useState, useMemo, useCallback, memo, useEffect, useRef } from "react";
+import { useState, useMemo, useCallback, memo, useEffect, useRef, type ReactNode } from "react";
 import {
   Settings2,
   Play,
   RefreshCw,
   AlertTriangle,
-  History,
   Trash2,
   ShieldAlert,
   Check,
@@ -14,20 +13,36 @@ import {
   Users2,
   Home,
   MessageSquare,
-  Columns,
   X,
 } from "lucide-react";
-import { SectionCard } from "@/components/shared/section-card";
-import { StatTile } from "@/components/charts/stat-tile";
+import { LabelWithHelp } from "@/components/shared/metric-help";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import type { Snapshot, Agent, DOW } from "@/lib/data/types";
+import { cn } from "@/lib/utils";
+import { WFM_ERLANG_REQUIRED, WFM_OPTIMIZER_OBJECTIVE } from "@/lib/copy/wfm-tooltips";
+import type { Snapshot } from "@/lib/data/types";
 import type { OptimizationMeta } from "@/lib/data/snapshot";
 import { useQueryState } from "nuqs";
 import { useRouter } from "next/navigation";
-import { launchOptimization, OptimizerLaunchError } from "@/lib/api/optimizer";
+import { launchOptimization, OptimizerLaunchError, deleteOptimizationRun } from "@/lib/api/optimizer";
+import { computeScenarioMetrics } from "@/lib/compute/optimization-metrics";
+import { OptimizationResults } from "@/components/optimizer/optimization-results";
+import {
+  WorkLimitationsPanel,
+  DEFAULT_WORK_LIMITATIONS,
+} from "@/components/optimizer/work-limitations-panel";
+import type {
+  FlexShiftAssignment,
+  WorkLimitations,
+} from "@/lib/data/schemas";
+
+const DEFAULT_FLEX_SHIFTS: FlexShiftAssignment = {
+  enabled: false,
+  flexEarlyMaxCount: 0,
+  cleanupLateMaxCount: 0,
+};
 
 type RunState = "idle" | "launching" | "polling" | "succeeded" | "failed";
 
@@ -57,7 +72,7 @@ export function OptimizerStatusBanner({ state, errorCode, errorMessage, onRetry 
             <RefreshCw className="h-5 w-5 text-primary shrink-0 animate-spin mt-0.5" />
           )}
           <div>
-            <h4 className="font-semibold capitalize text-sm">Solver Status: {state}</h4>
+            <h4 className="font-semibold capitalize text-sm">Run status: {state}</h4>
             {errorMessage && (
               <p className="text-xs mt-1 leading-relaxed opacity-90">
                 <strong>Details:</strong> {errorMessage} {errorCode && `(${errorCode})`}
@@ -81,7 +96,7 @@ export function OptimizerStatusBanner({ state, errorCode, errorMessage, onRetry 
 
 interface OptimizerTabProps {
   snapshot: Snapshot;
-  onUpdateSnapshot: (newSnapshot: Snapshot) => void;
+  baselineSnapshot: Snapshot;
   optimizations: OptimizationMeta[];
 }
 
@@ -92,11 +107,10 @@ interface ShiftConstraint {
   percentage: number;
 }
 
-type ShiftKey = "sixHour" | "eightHour" | "tenHour" | "twelveHour";
+type ShiftKey = "sixHour" | "eightHour" | "tenHour" | "twelveHour" | "splitShift";
 
 interface ShiftCardProps {
   title: string;
-  description: string;
   state: ShiftConstraint;
   onChange: (updated: ShiftConstraint) => void;
   colorClass: string;
@@ -104,17 +118,46 @@ interface ShiftCardProps {
   disabled?: boolean;
 }
 
+function toSafeCount(value: number): number {
+  if (!Number.isFinite(value)) return 0;
+  return Math.max(0, Math.round(value));
+}
+
+function toSafeCubicleCap(value: number): number {
+  if (!Number.isFinite(value)) return 34;
+  return Math.max(1, Math.round(value));
+}
+
 function getAbsoluteCount(sc: ShiftConstraint, totalHeadcount: number): number {
-  if (!sc.enabled) return 0;
-  if (sc.mode === "percentage") {
-    return Math.round((sc.percentage / 100) * totalHeadcount);
-  }
-  return sc.maxCount;
+  return toSafeCount(
+    !sc.enabled
+      ? 0
+      : sc.mode === "percentage"
+        ? (sc.percentage / 100) * totalHeadcount
+        : sc.maxCount,
+  );
+}
+
+function formatZodDetails(details: unknown): string | undefined {
+  if (!details || typeof details !== "object") return undefined;
+  const entries: string[] = [];
+  const walk = (node: unknown, path: string[]) => {
+    if (!node || typeof node !== "object") return;
+    const record = node as Record<string, unknown>;
+    if (Array.isArray(record._errors) && record._errors.length > 0) {
+      entries.push(`${path.join(".") || "payload"}: ${record._errors.join(", ")}`);
+    }
+    for (const [key, value] of Object.entries(record)) {
+      if (key === "_errors") continue;
+      walk(value, [...path, key]);
+    }
+  };
+  walk(details, []);
+  return entries.length > 0 ? entries.join("; ") : undefined;
 }
 
 const ShiftCard = memo(function ShiftCard({
   title,
-  description,
   state,
   onChange,
   colorClass,
@@ -122,73 +165,108 @@ const ShiftCard = memo(function ShiftCard({
   disabled,
 }: ShiftCardProps) {
   const calculatedCount = getAbsoluteCount(state, totalHeadcount);
+  const toggleId = `${title}-toggle`;
 
   return (
-    <div className={`p-5 rounded-lg border bg-card transition-all ${!state.enabled ? "opacity-60" : ""}`}>
-      <div className="flex items-start justify-between">
-        <div className="space-y-1">
-          <h4 className="font-semibold text-sm flex items-center gap-2 text-foreground">
-            <span className={`inline-block w-2.5 h-2.5 rounded-full ${colorClass}`} />
-            {title}
-          </h4>
-          <p className="text-xs text-muted-foreground leading-snug">{description}</p>
-        </div>
-        <div className="flex items-center gap-1.5">
-          <label htmlFor={`${title}-toggle`} className="text-xs text-muted-foreground cursor-pointer select-none">
-            {state.enabled ? "Enabled" : "Disabled"}
+    <div
+      className={cn(
+        "group relative overflow-hidden rounded-lg border border-border/60 bg-card shadow-sm",
+        "transition-[border-color,box-shadow] duration-150",
+        state.enabled
+          ? "hover:border-border hover:shadow-md"
+          : "opacity-60",
+      )}
+    >
+      {/* Color stripe — full-width identity rail */}
+      <div className={cn("h-1 w-full", colorClass, !state.enabled && "opacity-40")} />
+
+      <div className="p-4">
+        {/* Title row */}
+        <div className="flex items-center justify-between gap-3">
+          <h4 className="text-sm font-semibold text-foreground">{title}</h4>
+
+          {/* Switch-style toggle */}
+          <label
+            htmlFor={toggleId}
+            className="relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center"
+          >
+            <input
+              id={toggleId}
+              type="checkbox"
+              checked={state.enabled}
+              onChange={(e) => onChange({ ...state, enabled: e.target.checked })}
+              disabled={disabled}
+              className="peer sr-only"
+            />
+            <span
+              className={cn(
+                "absolute inset-0 rounded-full transition-colors duration-150",
+                "peer-focus-visible:ring-2 peer-focus-visible:ring-ring peer-focus-visible:ring-offset-2 peer-focus-visible:ring-offset-card",
+                state.enabled ? "bg-primary" : "bg-muted",
+              )}
+            />
+            <span
+              className={cn(
+                "absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform duration-150",
+                state.enabled ? "translate-x-[1.125rem]" : "translate-x-0.5",
+              )}
+            />
           </label>
-          <input
-            id={`${title}-toggle`}
-            type="checkbox"
-            checked={state.enabled}
-            onChange={(e) => onChange({ ...state, enabled: e.target.checked })}
-            disabled={disabled}
-            className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary cursor-pointer"
-          />
         </div>
-      </div>
 
-      {state.enabled && (
-        <div className="mt-5 space-y-4">
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => onChange({ ...state, mode: "count" })}
-              disabled={disabled}
-              className={`px-2.5 py-1 text-[10px] uppercase font-bold rounded border ${
-                state.mode === "count"
-                  ? "bg-primary/10 border-primary text-primary"
-                  : "bg-background border-input text-muted-foreground hover:bg-muted"
-              }`}
-            >
-              Hard Count
-            </button>
-            <button
-              type="button"
-              onClick={() => onChange({ ...state, mode: "percentage" })}
-              disabled={disabled}
-              className={`px-2.5 py-1 text-[10px] uppercase font-bold rounded border ${
-                state.mode === "percentage"
-                  ? "bg-primary/10 border-primary text-primary"
-                  : "bg-background border-input text-muted-foreground hover:bg-muted"
-              }`}
-            >
-              Percentage
-            </button>
-            <div className="grow" />
-            <Badge variant="outline" className="font-mono text-xs">
-              Max Limit: {calculatedCount} / {totalHeadcount}
-            </Badge>
-          </div>
+        {/* Body — only when enabled */}
+        {state.enabled && (
+          <div className="mt-4 space-y-3">
+            {/* Segmented control + result chip */}
+            <div className="flex items-center justify-between gap-2">
+              <div
+                role="tablist"
+                aria-label={`${title} mode`}
+                className="inline-flex h-7 items-center rounded-md bg-muted p-0.5"
+              >
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={state.mode === "count"}
+                  onClick={() => onChange({ ...state, mode: "count" })}
+                  disabled={disabled}
+                  className={cn(
+                    "h-6 rounded-[5px] px-2.5 text-[10px] font-semibold uppercase tracking-wider transition-colors",
+                    "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                    state.mode === "count"
+                      ? "bg-card text-foreground shadow-sm"
+                      : "text-muted-foreground hover:text-foreground",
+                  )}
+                >
+                  Count
+                </button>
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={state.mode === "percentage"}
+                  onClick={() => onChange({ ...state, mode: "percentage" })}
+                  disabled={disabled}
+                  className={cn(
+                    "h-6 rounded-[5px] px-2.5 text-[10px] font-semibold uppercase tracking-wider transition-colors",
+                    "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                    state.mode === "percentage"
+                      ? "bg-card text-foreground shadow-sm"
+                      : "text-muted-foreground hover:text-foreground",
+                  )}
+                >
+                  %
+                </button>
+              </div>
 
-          <div className="space-y-2">
+              <span className="num font-mono text-[11px] tabular-nums text-muted-foreground">
+                <span className="font-semibold text-foreground">{calculatedCount}</span>
+                {" "}/ {totalHeadcount}
+              </span>
+            </div>
+
+            {/* Slider + range labels */}
             {state.mode === "count" ? (
-              <div className="space-y-2">
-                <div className="flex justify-between text-xs font-mono text-muted-foreground">
-                  <span>0</span>
-                  <span className="font-bold text-foreground">{state.maxCount} agents</span>
-                  <span>{totalHeadcount}</span>
-                </div>
+              <div className="space-y-1.5">
                 <Slider
                   value={[state.maxCount]}
                   onValueChange={([val]) => onChange({ ...state, maxCount: val })}
@@ -197,14 +275,14 @@ const ShiftCard = memo(function ShiftCard({
                   step={1}
                   disabled={disabled}
                 />
+                <div className="flex justify-between font-mono text-[10px] tabular-nums text-muted-foreground">
+                  <span>0</span>
+                  <span className="font-semibold text-foreground">{state.maxCount} agents</span>
+                  <span>{totalHeadcount}</span>
+                </div>
               </div>
             ) : (
-              <div className="space-y-2">
-                <div className="flex justify-between text-xs font-mono text-muted-foreground">
-                  <span>0%</span>
-                  <span className="font-bold text-foreground">{state.percentage}% of roster</span>
-                  <span>100%</span>
-                </div>
+              <div className="space-y-1.5">
                 <Slider
                   value={[state.percentage]}
                   onValueChange={([val]) => onChange({ ...state, percentage: val })}
@@ -213,16 +291,186 @@ const ShiftCard = memo(function ShiftCard({
                   step={5}
                   disabled={disabled}
                 />
+                <div className="flex justify-between font-mono text-[10px] tabular-nums text-muted-foreground">
+                  <span>0%</span>
+                  <span className="font-semibold text-foreground">{state.percentage}% of roster</span>
+                  <span>100%</span>
+                </div>
               </div>
             )}
           </div>
-        </div>
-      )}
+        )}
+      </div>
     </div>
   );
 });
 
-export function OptimizerTab({ snapshot, onUpdateSnapshot, optimizations }: OptimizerTabProps) {
+function SectionHeader({ title, hint }: { title: string; hint?: ReactNode }) {
+  return (
+    <div className="flex items-end justify-between gap-3 border-b border-border/40 pb-2">
+      <h2 className="text-[11px] font-semibold uppercase tracking-[0.14em] text-foreground/70">
+        {title}
+      </h2>
+      {hint && (
+        <span className="font-mono text-[11px] tabular-nums text-muted-foreground">
+          {hint}
+        </span>
+      )}
+    </div>
+  );
+}
+
+function StatusBadge({ status }: { status: string }) {
+  const tone =
+    status === "succeeded"
+      ? "bg-emerald-500/10 text-emerald-700 ring-1 ring-emerald-500/20 dark:text-emerald-300"
+      : status === "failed"
+        ? "bg-rose-500/10 text-rose-700 ring-1 ring-rose-500/20 dark:text-rose-300"
+        : status === "running" || status === "pending"
+          ? "bg-amber-500/10 text-amber-800 ring-1 ring-amber-500/30 dark:text-amber-300"
+          : "bg-muted text-muted-foreground ring-1 ring-border";
+  return (
+    <span className={cn("inline-flex h-4 items-center rounded px-1.5 text-[10px] font-semibold uppercase tracking-wide", tone)}>
+      {status === "succeeded" && (
+        <span className="mr-1 h-1.5 w-1.5 rounded-full bg-emerald-500" />
+      )}
+      {(status === "running" || status === "pending") && (
+        <span className="mr-1 h-1.5 w-1.5 animate-pulse rounded-full bg-amber-500" />
+      )}
+      {status === "failed" && <span className="mr-1 h-1.5 w-1.5 rounded-full bg-rose-500" />}
+      {status}
+    </span>
+  );
+}
+
+function SubsectionLabel({ icon, children }: { icon?: ReactNode; children: ReactNode }) {
+  return (
+    <h3 className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+      {icon}
+      {children}
+    </h3>
+  );
+}
+
+function FlexShiftsPanel({
+  value,
+  onChange,
+  disabled,
+}: {
+  value: FlexShiftAssignment;
+  onChange: (next: FlexShiftAssignment) => void;
+  disabled?: boolean;
+}) {
+  const setEnabled = (enabled: boolean) =>
+    onChange({ ...value, enabled });
+  const setCount = (key: "flexEarlyMaxCount" | "cleanupLateMaxCount", n: number) => {
+    const safe = Number.isFinite(n) ? Math.max(0, Math.min(50, Math.round(n))) : 0;
+    onChange({ ...value, [key]: safe });
+  };
+
+  const inputCls =
+    "h-7 w-16 rounded-md border border-border/70 bg-background px-2 font-mono text-xs tabular-nums shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50";
+
+  return (
+    <fieldset
+      disabled={disabled}
+      className="space-y-2 rounded-lg border border-border/70 bg-card px-3 py-2.5 shadow-sm disabled:opacity-60"
+    >
+      <div className="flex items-center justify-between text-xs">
+        <label className="flex cursor-pointer items-center gap-2 text-foreground">
+          <input
+            type="checkbox"
+            checked={value.enabled}
+            disabled={disabled}
+            onChange={(e) => setEnabled(e.target.checked)}
+            className="h-3.5 w-3.5 rounded border-input text-primary focus:ring-primary cursor-pointer"
+          />
+          Allow flex / cleanup variants
+        </label>
+        {!value.enabled && (
+          <span className="text-[11px] text-muted-foreground">off</span>
+        )}
+      </div>
+
+      {value.enabled && (
+        <>
+          <div className="grid grid-cols-[1fr_auto] items-center gap-x-3 gap-y-1 text-xs">
+            <div className="space-y-0.5">
+              <div className="font-medium text-foreground">Flex-early shifts</div>
+              <div className="text-[10px] text-muted-foreground">Start 2h earlier than the base template</div>
+            </div>
+            <input
+              type="number"
+              min={0}
+              max={50}
+              step={1}
+              value={value.flexEarlyMaxCount}
+              onChange={(e) => setCount("flexEarlyMaxCount", e.target.valueAsNumber)}
+              className={inputCls}
+            />
+          </div>
+
+          <div className="grid grid-cols-[1fr_auto] items-center gap-x-3 gap-y-1 text-xs">
+            <div className="space-y-0.5">
+              <div className="font-medium text-foreground">Cleanup-late shifts</div>
+              <div className="text-[10px] text-muted-foreground">Extend 2h past the base template end</div>
+            </div>
+            <input
+              type="number"
+              min={0}
+              max={50}
+              step={1}
+              value={value.cleanupLateMaxCount}
+              onChange={(e) => setCount("cleanupLateMaxCount", e.target.valueAsNumber)}
+              className={inputCls}
+            />
+          </div>
+        </>
+      )}
+    </fieldset>
+  );
+}
+
+function FieldGroup({
+  label,
+  htmlFor,
+  required,
+  trailing,
+  children,
+}: {
+  label: string;
+  htmlFor?: string;
+  required?: boolean;
+  trailing?: ReactNode;
+  children: ReactNode;
+}) {
+  return (
+    <div className="space-y-1.5">
+      <div className="flex items-center justify-between gap-2">
+        <label htmlFor={htmlFor} className="text-xs font-semibold text-foreground">
+          {label}
+          {required && <span className="ml-0.5 text-rose-500">*</span>}
+        </label>
+        {trailing}
+      </div>
+      {children}
+    </div>
+  );
+}
+
+function CompareRow({ icon, label, children }: { icon: ReactNode; label: string; children: ReactNode }) {
+  return (
+    <div className="flex items-center justify-between border-b border-border pb-1.5">
+      <span className="flex items-center gap-1 text-muted-foreground">
+        {icon}
+        {label}
+      </span>
+      <span className="num font-bold text-foreground">{children}</span>
+    </div>
+  );
+}
+
+export function OptimizerTab({ snapshot, baselineSnapshot, optimizations }: OptimizerTabProps) {
   const [isSolving, setIsSolving] = useState(false);
   const [errorDetails, setErrorDetails] = useState<string | null>(null);
   const [runName, setRunName] = useState("");
@@ -241,21 +489,26 @@ export function OptimizerTab({ snapshot, onUpdateSnapshot, optimizations }: Opti
 
   const router = useRouter();
 
+  // Defaults: only 6h and 8h shifts are on. 10h/12h/SPLIT are off by default
+  // because each would push agents over the 40h weekly cap (10h × 5 = 50h,
+  // 12h × 5 = 60h) or because their 12h spread is visually confusing (SPLIT
+  // pays 8h but spans 12h). Users can opt in per category — those toggles
+  // explicitly choose to allow long shifts in the next optimization run.
   const [shifts, setShifts] = useState<Record<ShiftKey, ShiftConstraint>>({
     sixHour: {
       enabled: true,
       mode: "count",
-      maxCount: 6,
-      percentage: 15,
+      maxCount: 20,
+      percentage: 30,
     },
     eightHour: {
       enabled: true,
       mode: "count",
-      maxCount: 36,
-      percentage: 80,
+      maxCount: 47,
+      percentage: 100,
     },
     tenHour: {
-      enabled: true,
+      enabled: false,
       mode: "count",
       maxCount: 8,
       percentage: 20,
@@ -263,17 +516,31 @@ export function OptimizerTab({ snapshot, onUpdateSnapshot, optimizations }: Opti
     twelveHour: {
       enabled: false,
       mode: "count",
-      maxCount: 0,
-      percentage: 0,
+      maxCount: 8,
+      percentage: 15,
+    },
+    splitShift: {
+      enabled: false,
+      mode: "count",
+      maxCount: 12,
+      percentage: 25,
     },
   });
 
   const csaCount = snapshot?.meta?.role_counts?.CSA ?? 36;
-  const sdsCount = snapshot?.meta?.role_counts?.SDS ?? 8;
-  const ndsCount = snapshot?.meta?.role_counts?.NDS ?? 3;
-  const cubicleCap = snapshot?.meta?.cubicle_cap ?? snapshot?.cubicles?.cap ?? 34;
+  const cubicleCap = snapshot?.meta?.cubicle_cap ?? snapshot?.cubicles?.cap ?? 26;
 
   const [customCubicleCap, setCustomCubicleCap] = useState(cubicleCap);
+  const [workLimitations, setWorkLimitations] = useState<WorkLimitations>(
+    DEFAULT_WORK_LIMITATIONS,
+  );
+  const [flexShifts, setFlexShifts] = useState<FlexShiftAssignment>(DEFAULT_FLEX_SHIFTS);
+  // Stagger starts is on by default. When off, the solver stacks agents at
+  // the same clock-in minute (seating/handoff workflows).
+  const [staggerStarts, setStaggerStarts] = useState(true);
+  // Optimizer is CSA-only. SDS / Next Day / Supervisor are manually managed
+  // via analytics.legacy_roster.
+  const scope = "csa" as const;
 
   useEffect(() => {
     setCustomCubicleCap(cubicleCap);
@@ -287,6 +554,7 @@ export function OptimizerTab({ snapshot, onUpdateSnapshot, optimizations }: Opti
   const [commentText, setCommentComment] = useState("");
   const [comments, setComments] = useState<{ name: string; text: string; date: string }[]>([]);
 
+  // Safe SSR LocalStorage synchronization
   useEffect(() => {
     try {
       const raw = localStorage.getItem(`schedule-platform.feedback-${optId || "default"}`);
@@ -367,23 +635,21 @@ export function OptimizerTab({ snapshot, onUpdateSnapshot, optimizations }: Opti
 
     const maxEnabledCount = Object.keys(shifts).reduce((sum, key) => {
       const sc = shifts[key as ShiftKey];
-      return sum + (sc.enabled ? getAbsoluteCount(sc, csaCount + sdsCount + ndsCount) : 0);
+      return sum + (sc.enabled ? getAbsoluteCount(sc, csaCount) : 0);
     }, 0);
 
-    const isHeadcountInfeasible = maxEnabledCount < (csaCount + sdsCount + ndsCount);
+    const isHeadcountInfeasible = maxEnabledCount < csaCount;
 
     return {
       isBlocked: blockedIntervals.length > 0 || isHeadcountInfeasible,
       blockedIntervals,
       isHeadcountInfeasible,
       maxEnabledCount,
-      totalRequired: csaCount + sdsCount + ndsCount,
+      totalRequired: csaCount,
     };
-  }, [snapshot, customCubicleCap, shifts, csaCount, sdsCount, ndsCount]);
+  }, [snapshot, customCubicleCap, shifts, csaCount]);
 
-  const TOTAL_HEADCOUNT = useMemo(() => {
-    return csaCount + sdsCount + ndsCount;
-  }, [csaCount, sdsCount, ndsCount]);
+  const TOTAL_HEADCOUNT = csaCount;
 
   const handleShiftChange = useCallback((key: ShiftKey, updated: ShiftConstraint) => {
     setShifts((prev) => ({
@@ -408,20 +674,40 @@ export function OptimizerTab({ snapshot, onUpdateSnapshot, optimizations }: Opti
     handleShiftChange("twelveHour", updated);
   }, [handleShiftChange]);
 
+  const handleSplitShiftChange = useCallback((updated: ShiftConstraint) => {
+    handleShiftChange("splitShift", updated);
+  }, [handleShiftChange]);
+
   const [runState, setRunState] = useState<RunState>("idle");
   const [errorCode, setErrorCode] = useState<string | undefined>(undefined);
+  const [completedRunId, setCompletedRunId] = useState<string | null>(null);
   const isPollingRef = useRef(false);
+  const pollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pollAbortRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
     isPollingRef.current = true;
     return () => {
       isPollingRef.current = false;
+      if (pollTimerRef.current) {
+        clearTimeout(pollTimerRef.current);
+        pollTimerRef.current = null;
+      }
+      pollAbortRef.current?.abort();
+      pollAbortRef.current = null;
     };
   }, []);
 
   const handleRunOptimization = async () => {
-    if (!runName.trim()) {
+    const trimmedName = runName.trim();
+    if (!trimmedName) {
       setErrorDetails("Optimization Run Name is required.");
+      return;
+    }
+    if (trimmedName.length < 3) {
+      setErrorDetails("Optimization Run Name must be at least 3 characters.");
+      setErrorCode("PREFLIGHT_VALIDATION_ERROR");
+      setRunState("failed");
       return;
     }
 
@@ -429,12 +715,16 @@ export function OptimizerTab({ snapshot, onUpdateSnapshot, optimizations }: Opti
     setIsSolving(true);
     setErrorDetails(null);
     setErrorCode(undefined);
-    setSolvingStatus("Initiating optimization solver run...");
+    setSolvingStatus("Starting optimization run...");
 
     const payload = {
-      name: runName.trim(),
+      name: trimmedName,
       notes: notes.trim() || null,
-      cubicleCap: customCubicleCap,
+      cubicleCap: toSafeCubicleCap(customCubicleCap),
+      workLimitations,
+      flexShifts,
+      staggerStarts,
+      scope,
       shifts: {
         sixHour: {
           enabled: shifts.sixHour.enabled,
@@ -452,6 +742,10 @@ export function OptimizerTab({ snapshot, onUpdateSnapshot, optimizations }: Opti
           enabled: shifts.twelveHour.enabled,
           maxCount: getAbsoluteCount(shifts.twelveHour, TOTAL_HEADCOUNT),
         },
+        splitShift: {
+          enabled: shifts.splitShift.enabled,
+          maxCount: getAbsoluteCount(shifts.splitShift, TOTAL_HEADCOUNT),
+        },
       },
     };
 
@@ -459,17 +753,21 @@ export function OptimizerTab({ snapshot, onUpdateSnapshot, optimizations }: Opti
       const result = await launchOptimization(payload);
       const runId = result.id;
       setRunState("polling");
-      setSolvingStatus("Solver launched in background. Polling for results...");
+      setSolvingStatus("Optimization is running. Checking for results...");
 
-      // Start exponential backoff status polling
       let pollAttempts = 0;
       const maxPollAttempts = 40;
+
+      pollAbortRef.current?.abort();
+      pollAbortRef.current = new AbortController();
 
       const executePoll = async () => {
         if (!isPollingRef.current) return;
 
         try {
-          const statusResponse = await fetch(`/api/optimize/status?id=${runId}`);
+          const statusResponse = await fetch(`/api/optimize/status?id=${runId}`, {
+            signal: pollAbortRef.current?.signal,
+          });
           if (!statusResponse.ok) {
             throw new Error(`Status check returned code: ${statusResponse.status}`);
           }
@@ -482,21 +780,19 @@ export function OptimizerTab({ snapshot, onUpdateSnapshot, optimizations }: Opti
           const run = statusResult.run;
           if (run.status === "succeeded") {
             setRunState("succeeded");
-            setSolvingStatus("Success! Redirecting to overlay roster...");
+            setSolvingStatus("Complete. Loading roster overlay...");
+            setCompletedRunId(runId);
             setRunName("");
             setNotes("");
-            // Set opt_id in URL to switch roster view
             await setOptId(runId);
-            // Refresh the page data so the optimizations list updates
             router.refresh();
             setIsSolving(false);
           } else if (run.status === "failed") {
             setRunState("failed");
             setErrorCode("SOLVER_FAIL");
-            setErrorDetails(run.error_details || "Optimization CP-SAT solver failed.");
+            setErrorDetails(run.error_details || "Optimization failed.");
             setIsSolving(false);
           } else {
-            // Keep polling with exponential backoff delay (3s -> 10s cap)
             pollAttempts++;
             if (pollAttempts >= maxPollAttempts) {
               setRunState("failed");
@@ -508,55 +804,89 @@ export function OptimizerTab({ snapshot, onUpdateSnapshot, optimizations }: Opti
 
             const backoffMs = Math.min(3000 + pollAttempts * 1000, 10000);
             setSolvingStatus(run.status === "running"
-              ? `Roster layout solver is running (attempt ${pollAttempts}/${maxPollAttempts})...`
-              : `Waiting in solver queue (attempt ${pollAttempts}/${maxPollAttempts})...`
+              ? `Building roster (check ${pollAttempts}/${maxPollAttempts})...`
+              : `Queued (check ${pollAttempts}/${maxPollAttempts})...`
             );
-            setTimeout(executePoll, backoffMs);
+            pollTimerRef.current = setTimeout(executePoll, backoffMs);
           }
         } catch (err: any) {
+          if (err?.name === "AbortError") return;
           setRunState("failed");
           setErrorCode("POLL_FAIL");
-          setErrorDetails(err.message || "Failed to parse solver response.");
+          setErrorDetails(err.message || "Failed to read optimization status.");
           setIsSolving(false);
         }
       };
 
-      setTimeout(executePoll, 3000);
+      pollTimerRef.current = setTimeout(executePoll, 3000);
 
-    } catch (err: any) {
+    } catch (err: unknown) {
       setRunState("failed");
       setIsSolving(false);
       if (err instanceof OptimizerLaunchError) {
         setErrorCode(err.code);
-        setErrorDetails(err.message);
+        const detailText =
+          err.details && typeof err.details === "object"
+            ? formatZodDetails(err.details)
+            : undefined;
+        setErrorDetails(detailText ? `${err.message} (${detailText})` : err.message);
       } else {
         setErrorCode("UNKNOWN_LAUNCH_ERROR");
-        setErrorDetails(err?.message || "An unexpected error occurred during optimization.");
+        setErrorDetails(err instanceof Error ? err.message : "An unexpected error occurred during optimization.");
       }
     }
   };
 
-  const handleDeleteRun = async (id: string) => {
-    if (!confirm("Are you sure you want to permanently delete this optimization run?")) return;
+  const handleDeleteRun = async (id: string, runName?: string) => {
+    const label = runName ? `"${runName}"` : "this optimization run";
+    if (!confirm(`Permanently delete ${label}? This cannot be undone.`)) return;
     try {
-      const response = await fetch(`/api/optimize/delete?id=${id}`, {
-        method: "DELETE",
-      });
-      if (!response.ok) {
-        throw new Error("Failed to delete optimization run.");
-      }
+      await deleteOptimizationRun(id);
       if (optId === id) {
         setOptId("");
       }
+      setSelectedScenarios((prev) => prev.filter((x) => x !== id));
+      setScenarioPayloads((prev) => {
+        const next = { ...prev };
+        delete next[id];
+        return next;
+      });
       router.refresh();
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error(err);
-      alert(err?.message || "Deletion failed.");
+      alert(err instanceof Error ? err.message : "Deletion failed.");
     }
   };
 
+  // Safe memoization: Serialize relevant properties so optimizations array reference doesn't trigger recalc
+  const memoizedOptsKey = optimizations.map(o => `${o.id}-${o.status}`).join(",");
+  const activeOptimization = useMemo(
+    () =>
+      optId
+        ? optimizations.find((opt) => opt.id === optId && opt.status === "succeeded") ?? null
+        : null,
+    [optId, memoizedOptsKey],
+  );
+
+  const leadPct = snapshot.meta.lead_on_work_default;
+
+  const runSummary = useMemo(() => {
+    const activeShifts = Object.values(shifts).filter((s) => s.enabled).length;
+    return `${activeShifts} shift type${activeShifts === 1 ? "" : "s"} · ${TOTAL_HEADCOUNT} agents · ${customCubicleCap}-seat cap`;
+  }, [shifts, TOTAL_HEADCOUNT, customCubicleCap]);
+
+  const historySummary = useMemo(() => {
+    if (optimizations.length === 0) return "no runs yet";
+    const succeeded = optimizations.filter((o) => o.status === "succeeded").length;
+    const inFlight = optimizations.filter((o) => o.status === "running" || o.status === "pending").length;
+    const parts = [`${optimizations.length} run${optimizations.length === 1 ? "" : "s"}`];
+    if (succeeded > 0) parts.push(`${succeeded} succeeded`);
+    if (inFlight > 0) parts.push(`${inFlight} in-flight`);
+    return parts.join(" · ");
+  }, [optimizations]);
+
   return (
-    <div className="space-y-6">
+    <div className="space-y-10">
       <OptimizerStatusBanner
         state={runState}
         errorCode={errorCode}
@@ -568,163 +898,211 @@ export function OptimizerTab({ snapshot, onUpdateSnapshot, optimizations }: Opti
         }}
       />
 
-      <SectionCard
-        title="Simple Optimizer Configurator"
-        description="Toggle available shift lengths and specify headcount capacities. Run Google's CP-SAT engine dynamically to instantly re-solve and align weekly roster schedules."
-        bgImage="/28.jpg"
-        bgImageOpacity={0.03}
-        toolbar={
-          <Badge variant="secondary" className="font-mono text-xs">
-            Headcount Constraint: {TOTAL_HEADCOUNT} Cubicles
-          </Badge>
-        }
-      >
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          <StatTile label="Total FTE Base" value={`${csaCount} CSAs`} hint="CSA Line & CSA Leads" />
-          <StatTile label="SDS Schedulers" value={`${sdsCount} SDS`} hint="Same-Day Dispatchers" />
-          <StatTile label="NDS Schedulers" value={`${ndsCount} NDS`} hint="Next-Day Allocations" />
-          <StatTile label="Max Workspace Cap" value={`${cubicleCap} Seats`} hint="Physical concurrent cubicle limit" />
-        </div>
-      </SectionCard>
+      {activeOptimization && (
+        <OptimizationResults
+          runName={activeOptimization.run_name}
+          baseline={baselineSnapshot}
+          proposed={snapshot}
+          leadPct={leadPct}
+          showSuccessBanner={completedRunId === activeOptimization.id}
+          onDismissSuccess={() => setCompletedRunId(null)}
+        />
+      )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-2 space-y-5">
-          <h2 className="flex items-center gap-2 text-foreground font-semibold text-lg">
-            <Settings2 className="h-5 w-5 text-muted-foreground" />
-            Allowed Shift Configurations
-          </h2>
+      {/* ─── CONFIGURE ─────────────────────────────────────────────── */}
+      <section>
+        <SectionHeader
+          title="Configure optimization run"
+          hint={`${TOTAL_HEADCOUNT} agents · ${customCubicleCap}-seat cap`}
+        />
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <ShiftCard
-              title="6-Hour Shifts"
-              description="Twilight and short mid-day shifts (gross 6h). Concentrates coverage during evening call tails."
-              state={shifts.sixHour}
-              onChange={handleSixHourChange}
-              colorClass="bg-indigo-500"
-              totalHeadcount={TOTAL_HEADCOUNT}
-              disabled={isSolving || isViewer}
-            />
+        <div className="mt-5 grid grid-cols-1 gap-6 lg:grid-cols-12">
+          {/* Left: Constraints (8/12) */}
+          <div className="space-y-8 lg:col-span-8">
+            <div className="space-y-3">
+              <SubsectionLabel icon={<Settings2 className="h-3.5 w-3.5" />}>
+                Shift types
+              </SubsectionLabel>
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                <ShiftCard
+                  title="6-Hour Shifts"
+                  state={shifts.sixHour}
+                  onChange={handleSixHourChange}
+                  colorClass="bg-indigo-500"
+                  totalHeadcount={TOTAL_HEADCOUNT}
+                  disabled={isSolving || isViewer}
+                />
+                <ShiftCard
+                  title="8-Hour Shifts"
+                  state={shifts.eightHour}
+                  onChange={handleEightHourChange}
+                  colorClass="bg-emerald-500"
+                  totalHeadcount={TOTAL_HEADCOUNT}
+                  disabled={isSolving || isViewer}
+                />
+                <ShiftCard
+                  title="10-Hour Shifts"
+                  state={shifts.tenHour}
+                  onChange={handleTenHourChange}
+                  colorClass="bg-amber-500"
+                  totalHeadcount={TOTAL_HEADCOUNT}
+                  disabled={isSolving || isViewer}
+                />
+                <ShiftCard
+                  title="12-Hour Shifts"
+                  state={shifts.twelveHour}
+                  onChange={handleTwelveHourChange}
+                  colorClass="bg-rose-500"
+                  totalHeadcount={TOTAL_HEADCOUNT}
+                  disabled={isSolving || isViewer}
+                />
+                <ShiftCard
+                  title="Split Shifts"
+                  state={shifts.splitShift}
+                  onChange={handleSplitShiftChange}
+                  colorClass="bg-sky-500"
+                  totalHeadcount={TOTAL_HEADCOUNT}
+                  disabled={isSolving || isViewer}
+                />
+              </div>
+            </div>
 
-            <ShiftCard
-              title="8-Hour Shifts"
-              description="Standard full-time shifts (gross 8h-8.5h). EARLY, AM_CORE, LATE, and OVERNIGHT blocks."
-              state={shifts.eightHour}
-              onChange={handleEightHourChange}
-              colorClass="bg-emerald-500"
-              totalHeadcount={TOTAL_HEADCOUNT}
-              disabled={isSolving || isViewer}
-            />
+            <div className="space-y-3">
+              <SubsectionLabel>Work limits</SubsectionLabel>
+              <WorkLimitationsPanel
+                value={workLimitations}
+                onChange={setWorkLimitations}
+                disabled={isSolving || isViewer}
+              />
+            </div>
 
-            <ShiftCard
-              title="10-Hour Shifts"
-              description="Compressed workweeks and weekend shifts (gross 10.5h). Covers larger service spans."
-              state={shifts.tenHour}
-              onChange={handleTenHourChange}
-              colorClass="bg-amber-500"
-              totalHeadcount={TOTAL_HEADCOUNT}
-              disabled={isSolving || isViewer}
-            />
+            <div className="space-y-3">
+              <SubsectionLabel>Flex shifts</SubsectionLabel>
+              <FlexShiftsPanel
+                value={flexShifts}
+                onChange={setFlexShifts}
+                disabled={isSolving || isViewer}
+              />
+            </div>
 
-            <ShiftCard
-              title="12-Hour Shifts"
-              description="Toll-free emergency or super-span schedules."
-              state={shifts.twelveHour}
-              onChange={handleTwelveHourChange}
-              colorClass="bg-rose-500"
-              totalHeadcount={TOTAL_HEADCOUNT}
-              disabled={isSolving || isViewer}
-            />
-          </div>
-        </div>
-
-        <aside className="space-y-5">
-          <SectionCard title="Optimization Sandbox" bgImage="/28.jpg" bgImageOpacity={0.06}>
-            <div className="space-y-4 text-sm text-muted-foreground leading-relaxed">
-              <p>
-                Adjust the limits and toggle switches to configure biddable shift options. Define a name, run notes, and click Run below to solve the CP-SAT model.
-              </p>
-
-              <div className="space-y-3">
-                <div className="space-y-1.5 pb-2">
-                  <div className="flex justify-between items-center text-xs font-semibold text-foreground">
-                    <label htmlFor="cubicle-cap-slider">Workspace Cubicle Cap</label>
-                    <span className="num font-mono text-[11px] bg-muted px-1.5 py-0.5 rounded text-muted-foreground">{customCubicleCap} seats</span>
-                  </div>
-                  <Slider
-                    id="cubicle-cap-slider"
-                    min={10}
-                    max={40}
-                    step={1}
-                    value={[customCubicleCap]}
-                    onValueChange={(v) => setCustomCubicleCap(v[0])}
-                    disabled={isSolving || isViewer}
-                  />
-                  <p className="text-[10px] text-muted-foreground">Caps concurrent workstations in use.</p>
-                </div>
-
-                <div className="space-y-1">
-                  <label htmlFor="run-name" className="text-xs font-semibold text-foreground">
-                    Optimization Run Name *
-                  </label>
+            <div className="space-y-3">
+              <SubsectionLabel>Start times</SubsectionLabel>
+              <div className="rounded-lg border border-border/60 bg-card p-4 shadow-sm">
+                <label className="flex items-start gap-3 cursor-pointer">
                   <input
-                    id="run-name"
-                    type="text"
-                    placeholder="e.g. Six-Hour Evening Hybrid"
-                    value={runName}
-                    onChange={(e) => setRunName(e.target.value)}
+                    type="checkbox"
+                    checked={staggerStarts}
+                    onChange={(e) => setStaggerStarts(e.target.checked)}
                     disabled={isSolving || isViewer}
-                    className="w-full h-9 rounded-md border border-input bg-background px-3 py-1 text-xs shadow-sm focus:outline-none focus:ring-1 focus:ring-ring disabled:opacity-50"
+                    className="mt-0.5 h-4 w-4 rounded border-border text-primary focus:ring-2 focus:ring-ring"
                   />
-                </div>
-                <div className="space-y-1">
-                  <label htmlFor="run-notes" className="text-xs font-semibold text-foreground">
-                    Notes / Hypothesis
-                  </label>
-                  <textarea
-                    id="run-notes"
-                    rows={2}
-                    placeholder="Explain the intent of this run..."
-                    value={notes}
-                    onChange={(e) => setNotes(e.target.value)}
-                    disabled={isSolving || isViewer}
-                    className="w-full rounded-md border border-input bg-background px-3 py-2 text-xs shadow-sm focus:outline-none focus:ring-1 focus:ring-ring disabled:opacity-50 resize-none"
+                  <div className="space-y-1">
+                    <div className="text-sm font-medium text-foreground">
+                      Stagger start times
+                    </div>
+                    <p className="text-xs text-muted-foreground leading-relaxed">
+                      On (default): max 2 CSAs / 1 Lead per role can start at the
+                      same clock-in minute. Off: stack multiple agents at the
+                      same start time (useful for shared briefings or rotating
+                      through cubicles).
+                    </p>
+                  </div>
+                </label>
+              </div>
+            </div>
+
+          </div>
+
+          {/* Right: Run action (4/12, sticky on lg+) */}
+          <aside className="lg:col-span-4">
+            <div className="space-y-5 rounded-xl border border-border bg-card p-5 shadow-sm lg:sticky lg:top-6">
+              <div className="space-y-1">
+                <SubsectionLabel>
+                  <LabelWithHelp
+                    label="Run"
+                    help={
+                      <>
+                        <p>{WFM_OPTIMIZER_OBJECTIVE}</p>
+                        <p className="mt-1.5">{WFM_ERLANG_REQUIRED}</p>
+                      </>
+                    }
                   />
-                </div>
+                </SubsectionLabel>
+                <p className="text-[11px] leading-relaxed text-muted-foreground">
+                  Each run starts fresh. Saved only on success.
+                </p>
               </div>
 
+              <FieldGroup label="Run name" required htmlFor="run-name">
+                <input
+                  id="run-name"
+                  type="text"
+                  placeholder="e.g. Six-Hour Evening Hybrid"
+                  value={runName}
+                  onChange={(e) => setRunName(e.target.value)}
+                  disabled={isSolving || isViewer}
+                  className="h-9 w-full rounded-md border border-input bg-background px-3 text-xs shadow-sm focus:outline-none focus:ring-1 focus:ring-ring disabled:opacity-50"
+                />
+              </FieldGroup>
+
+              <FieldGroup label="Notes" htmlFor="run-notes">
+                <textarea
+                  id="run-notes"
+                  rows={2}
+                  placeholder="Optional context for this run…"
+                  value={notes}
+                  onChange={(e) => setNotes(e.target.value)}
+                  disabled={isSolving || isViewer}
+                  className="w-full resize-none rounded-md border border-input bg-background px-3 py-2 text-xs shadow-sm focus:outline-none focus:ring-1 focus:ring-ring disabled:opacity-50"
+                />
+              </FieldGroup>
+
+              <FieldGroup
+                label="Cubicle cap"
+                htmlFor="cubicle-cap-slider"
+                trailing={
+                  <span className="num font-mono text-[11px] tabular-nums text-muted-foreground">
+                    {customCubicleCap} seats
+                  </span>
+                }
+              >
+                <Slider
+                  id="cubicle-cap-slider"
+                  min={10}
+                  max={40}
+                  step={1}
+                  value={[customCubicleCap]}
+                  onValueChange={(v) => setCustomCubicleCap(v[0])}
+                  disabled={isSolving || isViewer}
+                />
+              </FieldGroup>
+
               {solvingStatus && (
-                <div className="bg-primary/5 border border-primary/20 rounded-md p-3 text-xs text-primary font-medium flex items-center gap-2">
-                  <RefreshCw className="h-3.5 w-3.5 animate-spin text-primary" />
+                <div className="flex items-center gap-2 rounded-md border border-primary/20 bg-primary/5 p-3 text-xs font-medium text-primary">
+                  <RefreshCw className="h-3.5 w-3.5 shrink-0 animate-spin" />
                   <span>{solvingStatus}</span>
                 </div>
               )}
 
-              <div className="bg-amber-100/60 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-900/60 rounded-md p-3 text-xs text-amber-950 dark:text-amber-200 font-medium">
-                <span className="font-semibold text-amber-950 dark:text-amber-100">Stateless Solving:</span> Operates entirely in safe isolated memory.
-              </div>
-
-              <div className="border-t border-border my-4" />
-
-              {/* Infeasibility alert */}
               {infeasibilityDetails.isBlocked && (
-                <div className="border-2 border-red-500/80 bg-red-500/10 text-red-950 dark:text-red-200 p-4 rounded-md space-y-3">
-                  <div className="flex items-center gap-1.5 text-red-600 dark:text-red-400 font-bold text-xs">
+                <div className="space-y-3 rounded-md border-2 border-red-500/80 bg-red-500/10 p-4 text-red-950 dark:text-red-200">
+                  <div className="flex items-center gap-1.5 text-xs font-bold text-red-600 dark:text-red-400">
                     <ShieldAlert className="h-5 w-5 shrink-0" />
-                    <span>No Feasible Schedule Found</span>
+                    <span>No feasible schedule found</span>
                   </div>
-                  <p className="text-[11px] text-red-800 dark:text-red-300 leading-relaxed">
-                    The solver cannot satisfy constraints due to a physical contradiction:
-                  </p>
-                  
+
                   {infeasibilityDetails.blockedIntervals.length > 0 && (
                     <div className="space-y-1.5">
-                      <span className="text-xs font-bold text-red-900 dark:text-red-200 block">Workspace Cap Overrun:</span>
+                      <p className="text-xs font-bold text-red-900 dark:text-red-200">Workspace cap overrun</p>
                       <p className="text-[10px] text-muted-foreground">
-                        Required weekend phone staffing exceeds your Workspace Cap of {customCubicleCap} seats in the following intervals:
+                        Weekend phone staffing exceeds your cap of {customCubicleCap} seats:
                       </p>
-                      <div className="max-h-24 overflow-y-auto rounded border border-red-200/30 bg-black/5 dark:bg-black/20 text-[10px] font-mono p-1">
+                      <div className="max-h-24 overflow-y-auto rounded border border-red-200/30 bg-black/5 p-1 font-mono text-[10px] dark:bg-black/20">
                         {infeasibilityDetails.blockedIntervals.map((b, idx) => (
-                          <div key={idx} className="flex justify-between py-0.5 px-1 border-b border-red-200/10 last:border-b-0">
+                          <div
+                            key={idx}
+                            className="flex justify-between border-b border-red-200/10 px-1 py-0.5 last:border-b-0"
+                          >
                             <span>{b.day} {b.time}</span>
                             <span>Req: {b.required} &gt; Cap: {b.cap}</span>
                           </div>
@@ -734,166 +1112,169 @@ export function OptimizerTab({ snapshot, onUpdateSnapshot, optimizations }: Opti
                         variant="destructive"
                         size="sm"
                         onClick={() => setCustomCubicleCap(38)}
-                        className="text-[10px] h-7 w-full bg-red-600 hover:bg-red-700 text-white"
+                        className="h-7 w-full bg-red-600 text-[10px] text-white hover:bg-red-700"
                       >
-                        Set Cubicle Cap to 38
+                        Set cubicle cap to 38
                       </Button>
                     </div>
                   )}
 
                   {infeasibilityDetails.isHeadcountInfeasible && (
                     <div className="space-y-1.5">
-                      <span className="text-xs font-bold text-red-900 dark:text-red-200 block">Headcount Shortfall:</span>
+                      <p className="text-xs font-bold text-red-900 dark:text-red-200">Headcount shortfall</p>
                       <p className="text-[10px] text-muted-foreground">
-                        The sum of enabled shift maximum caps ({infeasibilityDetails.maxEnabledCount}) is less than the total required headcount of {infeasibilityDetails.totalRequired} agents.
+                        Enabled shift caps total {infeasibilityDetails.maxEnabledCount}, less than the required {infeasibilityDetails.totalRequired} agents.
                       </p>
                       <Button
                         variant="destructive"
                         size="sm"
                         onClick={() => {
-                          setShifts(prev => ({
+                          setShifts((prev) => ({
                             ...prev,
-                            eightHour: {
-                              ...prev.eightHour,
-                              enabled: true,
-                              maxCount: 36,
-                            }
+                            eightHour: { ...prev.eightHour, enabled: true, maxCount: 36 },
                           }));
                         }}
-                        className="text-[10px] h-7 w-full bg-red-600 hover:bg-red-700 text-white"
+                        className="h-7 w-full bg-red-600 text-[10px] text-white hover:bg-red-700"
                       >
-                        Enable 8-Hour shifts with full capacity (Relax by 10%)
+                        Enable 8-hour shifts at full roster
                       </Button>
                     </div>
                   )}
                 </div>
               )}
 
-              {/* We no longer render simple unformatted errorDetails below, because they are elegantly surfaced in our status banner above */}
+              {/* Run summary — confirms what's about to happen */}
+              <div className="rounded-md border border-border/60 bg-muted/20 p-2.5">
+                <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                  This run will use
+                </p>
+                <p className="mt-1 font-mono text-[11px] tabular-nums text-foreground">
+                  {runSummary}
+                </p>
+              </div>
 
               <Button
                 variant="default"
                 onClick={handleRunOptimization}
-                disabled={isSolving || isViewer}
-                className="w-full flex items-center justify-center gap-2 h-10 font-semibold"
+                disabled={isSolving || isViewer || infeasibilityDetails.isBlocked}
+                className="group flex h-10 w-full items-center justify-center gap-2 font-semibold transition-all hover:shadow-md hover:shadow-primary/20"
               >
                 {isSolving ? (
                   <>
                     <RefreshCw className="h-4 w-4 animate-spin" />
-                    Solving CP-SAT Model...
+                    Running optimization…
                   </>
                 ) : isViewer ? (
                   <>
                     <Play className="h-4 w-4 fill-current opacity-50" />
-                    Viewer Mode (Read-Only)
+                    Viewer mode (read-only)
                   </>
                 ) : (
                   <>
-                    <Play className="h-4 w-4 fill-current" />
-                    Run Simple Optimizer
+                    <Play className="h-4 w-4 fill-current transition-transform group-hover:scale-110" />
+                    Run optimization
                   </>
                 )}
               </Button>
-
-              {/* Collaborative commentary comment box */}
-              {isViewer && (
-                <div className="border border-border bg-card rounded-md p-4 space-y-3 mt-4">
-                  <div className="flex items-center gap-1.5 text-foreground font-semibold text-xs">
-                    <MessageSquare className="h-4 w-4 text-primary" />
-                    <span>Stakeholder Feedback</span>
-                  </div>
-                  <p className="text-[11px] text-muted-foreground leading-relaxed">
-                    Collaborative Mode is active. Share your thoughts or suggestions below.
-                  </p>
-                  <div className="space-y-2 text-xs">
-                    <div className="space-y-1">
-                      <label htmlFor="feedback-name" className="text-muted-foreground font-medium text-[10px]">Your Name</label>
-                      <input
-                        id="feedback-name"
-                        type="text"
-                        placeholder="e.g. Supervisor Jones"
-                        value={commentName}
-                        onChange={(e) => setCommentName(e.target.value)}
-                        className="w-full h-8 rounded border border-input bg-background px-2.5 py-1 text-xs"
-                      />
-                    </div>
-                    <div className="space-y-1">
-                      <label htmlFor="feedback-text" className="text-muted-foreground font-medium text-[10px]">Comments</label>
-                      <textarea
-                        id="feedback-text"
-                        rows={2}
-                        placeholder="e.g. Overnight shift has too much overlap..."
-                        value={commentText}
-                        onChange={(e) => setCommentComment(e.target.value)}
-                        className="w-full rounded border border-input bg-background px-2.5 py-1.5 text-xs resize-none"
-                      />
-                    </div>
-                    <Button
-                      variant="secondary"
-                      size="sm"
-                      onClick={() => {
-                        if (!commentName.trim() || !commentText.trim()) return;
-                        const newComment = {
-                          name: commentName.trim(),
-                          text: commentText.trim(),
-                          date: new Date().toLocaleString("en-US", { timeZone: "America/Phoenix" }),
-                        };
-                        const updated = [newComment, ...comments];
-                        setComments(updated);
-                        localStorage.setItem(`schedule-platform.feedback-${optId || "default"}`, JSON.stringify(updated));
-                        setCommentName("");
-                        setCommentComment("");
-                      }}
-                      disabled={!commentName.trim() || !commentText.trim()}
-                      className="w-full h-8 text-xs font-semibold text-foreground"
-                    >
-                      Submit Feedback
-                    </Button>
-                  </div>
-
-                  {comments.length > 0 && (
-                    <div className="pt-3 border-t border-border space-y-2.5 max-h-36 overflow-y-auto">
-                      {comments.map((c, i) => (
-                        <div key={i} className="text-xs space-y-0.5 bg-muted/40 p-2 rounded">
-                          <div className="flex justify-between items-center text-[10px] text-muted-foreground">
-                            <span className="font-bold text-foreground">{c.name}</span>
-                            <span>{c.date}</span>
-                          </div>
-                          <p className="text-[11px] text-foreground/80 leading-relaxed font-sans">{c.text}</p>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              )}
             </div>
-          </SectionCard>
-        </aside>
-      </div>
+          </aside>
+        </div>
+      </section>
 
-      <div className="mt-8 border-t pt-8 space-y-4">
-        <h2 className="flex items-center gap-2 text-foreground font-semibold text-lg">
-          <History className="h-5 w-5 text-muted-foreground" />
-          Optimization History
-        </h2>
-        <div className="rounded-md border bg-card overflow-hidden">
+      {/* ─── STAKEHOLDER FEEDBACK (viewer mode only) ──────────────── */}
+      {isViewer && (
+        <section>
+          <SectionHeader
+            title="Stakeholder feedback"
+            hint={`${comments.length} comment${comments.length === 1 ? "" : "s"}`}
+          />
+          <div className="mt-5 space-y-4 rounded-xl border border-border bg-card p-5 shadow-sm">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <FieldGroup label="Your name" htmlFor="feedback-name">
+                <input
+                  id="feedback-name"
+                  type="text"
+                  placeholder="e.g. Supervisor Jones"
+                  value={commentName}
+                  onChange={(e) => setCommentName(e.target.value)}
+                  className="h-9 w-full rounded-md border border-input bg-background px-3 text-xs"
+                />
+              </FieldGroup>
+              <FieldGroup label="Comment" htmlFor="feedback-text">
+                <textarea
+                  id="feedback-text"
+                  rows={1}
+                  placeholder="e.g. Overnight shift has too much overlap…"
+                  value={commentText}
+                  onChange={(e) => setCommentComment(e.target.value)}
+                  className="w-full resize-none rounded-md border border-input bg-background px-3 py-2 text-xs"
+                />
+              </FieldGroup>
+            </div>
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => {
+                if (!commentName.trim() || !commentText.trim()) return;
+                const newComment = {
+                  name: commentName.trim(),
+                  text: commentText.trim(),
+                  date: new Date().toLocaleString("en-US", { timeZone: "America/Phoenix" }),
+                };
+                const updated = [newComment, ...comments];
+                setComments(updated);
+                localStorage.setItem(
+                  `schedule-platform.feedback-${optId || "default"}`,
+                  JSON.stringify(updated),
+                );
+                setCommentName("");
+                setCommentComment("");
+              }}
+              disabled={!commentName.trim() || !commentText.trim()}
+              className="h-8 text-xs font-semibold text-foreground"
+            >
+              <MessageSquare className="mr-1.5 h-3.5 w-3.5" />
+              Submit feedback
+            </Button>
+
+            {comments.length > 0 && (
+              <div className="max-h-48 space-y-2.5 overflow-y-auto border-t border-border pt-3">
+                {comments.map((c, i) => (
+                  <div key={i} className="space-y-0.5 rounded bg-muted/40 p-2 text-xs">
+                    <div className="flex items-center justify-between text-[10px] text-muted-foreground">
+                      <span className="font-bold text-foreground">{c.name}</span>
+                      <span>{c.date}</span>
+                    </div>
+                    <p className="font-sans text-[11px] leading-relaxed text-foreground/80">{c.text}</p>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </section>
+      )}
+
+      {/* ─── HISTORY ───────────────────────────────────────────────── */}
+      <section>
+        <SectionHeader title="Optimization history" hint={historySummary} />
+        <div className="mt-5 overflow-hidden rounded-lg border border-border/70 bg-card shadow-sm">
           <table className="w-full text-sm">
-            <thead className="bg-muted/40 text-muted-foreground font-medium border-b text-xs text-left">
+            <thead className="border-b border-border/60 bg-muted/30 text-left text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
               <tr>
-                <th className="p-3 pl-4 w-10 text-center">Compare</th>
-                <th className="p-3">Run Name</th>
-                <th className="p-3">Created At</th>
-                <th className="p-3">Notes</th>
-                <th className="p-3">Status</th>
-                <th className="p-3">Result KPIs</th>
-                <th className="p-3 text-right pr-4">Actions</th>
+                <th className="w-10 p-2.5 pl-4 text-center">Cmp</th>
+                <th className="p-2.5">Run name</th>
+                <th className="p-2.5">Created</th>
+                <th className="p-2.5">Notes</th>
+                <th className="p-2.5">Status</th>
+                <th className="p-2.5 text-right">Bodies</th>
+                <th className="p-2.5 pr-4 text-right">Actions</th>
               </tr>
             </thead>
-            <tbody className="divide-y">
+            <tbody className="divide-y divide-border/60">
               {optimizations.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="p-8 text-center text-muted-foreground text-xs">
-                    No custom optimization runs saved yet. Configure constraints and click Run above to generate one.
+                  <td colSpan={7} className="p-10 text-center text-xs text-muted-foreground">
+                    No runs saved yet. Configure constraints above and click Run.
                   </td>
                 </tr>
               ) : (
@@ -902,54 +1283,70 @@ export function OptimizerTab({ snapshot, onUpdateSnapshot, optimizations }: Opti
                   const isSelected = selectedScenarios.includes(opt.id);
                   const dateStr = new Date(opt.created_at).toLocaleString();
                   return (
-                    <tr key={opt.id} className={isActive ? "bg-primary/5 font-medium" : ""}>
-                      <td className="p-3 pl-4 text-center">
+                    <tr
+                      key={opt.id}
+                      className={cn(
+                        "transition-colors",
+                        isActive ? "bg-primary/5 font-medium" : "hover:bg-muted/30",
+                      )}
+                    >
+                      <td className="p-2.5 pl-4 text-center">
                         {opt.status === "succeeded" ? (
                           <input
                             type="checkbox"
                             checked={isSelected}
                             onChange={(e) => handleSelectScenario(opt.id, e.target.checked)}
-                            className="rounded border-input text-primary focus:ring-ring cursor-pointer"
+                            className="cursor-pointer rounded border-input text-primary focus:ring-ring"
                           />
                         ) : (
-                          <span className="text-muted-foreground text-[10px]">—</span>
+                          <span className="text-[10px] text-muted-foreground">—</span>
                         )}
                       </td>
-                      <td className="p-3 max-w-[200px] truncate">
+                      <td className="max-w-[220px] truncate p-2.5">
                         <div className="flex items-center gap-2">
-                          {isActive && <Badge variant="default" className="text-[10px] h-4 px-1.5 font-sans">Active</Badge>}
+                          {isActive && (
+                            <span className="inline-flex h-4 items-center rounded bg-primary/15 px-1.5 text-[10px] font-semibold uppercase tracking-wide text-primary">
+                              Active
+                            </span>
+                          )}
                           <span>{opt.run_name}</span>
                         </div>
                       </td>
-                      <td className="p-3 text-xs text-muted-foreground num">{dateStr}</td>
-                      <td className="p-3 max-w-[220px] truncate text-xs text-muted-foreground">{opt.notes || "—"}</td>
-                      <td className="p-3">
-                        <Badge variant={opt.status === "succeeded" ? "secondary" : "outline"} className="capitalize text-[10px] h-4">
-                          {opt.status}
-                        </Badge>
+                      <td className="num p-2.5 text-xs text-muted-foreground">{dateStr}</td>
+                      <td className="max-w-[220px] truncate p-2.5 text-xs text-muted-foreground">
+                        {opt.notes || "—"}
                       </td>
-                      <td className="p-3 text-xs text-muted-foreground num">
-                        {opt.kpis?.total_bodies ? `${opt.kpis.total_bodies} bodies` : "—"}
+                      <td className="p-2.5">
+                        <StatusBadge status={opt.status} />
                       </td>
-                      <td className="p-3 text-right pr-4 space-x-2">
+                      <td className="num p-2.5 text-right text-xs text-muted-foreground tabular-nums">
+                        {opt.kpis?.total_bodies ?? "—"}
+                      </td>
+                      <td className="space-x-1.5 p-2.5 pr-4 text-right">
                         {opt.status === "succeeded" && (
                           <Button
                             variant={isActive ? "outline" : "default"}
                             size="sm"
-                            className="text-xs px-2.5 h-7"
-                            onClick={() => setOptId(isActive ? "" : opt.id)}
+                            className="h-7 px-2.5 text-xs"
+                            onClick={async () => {
+                              await setOptId(isActive ? "" : opt.id);
+                              router.refresh();
+                            }}
                           >
                             {isActive ? "Deselect" : "Overlay"}
                           </Button>
                         )}
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="text-xs px-2.5 h-7 text-rose-500 hover:text-rose-600 hover:bg-rose-500/10"
-                          onClick={() => handleDeleteRun(opt.id)}
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </Button>
+                        {!isViewer && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-7 px-2 text-xs text-rose-500 opacity-0 transition-opacity group-hover:opacity-100 hover:bg-rose-500/10 hover:text-rose-600 [tr:hover_&]:opacity-100"
+                            onClick={() => handleDeleteRun(opt.id, opt.run_name)}
+                            title="Delete this run"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </Button>
+                        )}
                       </td>
                     </tr>
                   );
@@ -958,98 +1355,74 @@ export function OptimizerTab({ snapshot, onUpdateSnapshot, optimizations }: Opti
             </tbody>
           </table>
         </div>
-      </div>
+      </section>
 
-      {/* Scenario Comparison Workspace */}
+      {/* ─── COMPARE SCENARIOS (conditional) ───────────────────────── */}
       {selectedScenarios.length > 0 && (
-        <div className="mt-8 border-t pt-8 space-y-4">
-          <div className="flex items-center justify-between">
-            <h2 className="flex items-center gap-2 text-foreground font-semibold text-lg">
-              <Columns className="h-5 w-5 text-muted-foreground" />
-              Scenario Comparison Workspace
-            </h2>
-            <Badge variant="secondary" className="text-xs font-mono">
-              {selectedScenarios.length} of 3 selected
-            </Badge>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+        <section>
+          <SectionHeader title="Compare scenarios" hint={`${selectedScenarios.length} of 3 selected`} />
+          <div className="mt-5 grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
             {selectedScenarios.map((id) => {
               const opt = optimizations.find((o) => o.id === id);
               if (!opt) return null;
-              
+
               const payload = scenarioPayloads[id];
               const isLoading = loadingPayloads[id];
-              
-              const metrics = calculateScenarioMetrics(payload);
+              const metrics = payload ? computeScenarioMetrics(payload, leadPct) : null;
 
               return (
                 <Card key={id} className="relative overflow-hidden border border-border shadow-sm">
-                  {isLoading ? (
-                    <div className="absolute inset-0 bg-background/50 backdrop-blur-[1px] flex items-center justify-center z-10">
+                  {isLoading && (
+                    <div className="absolute inset-0 z-10 flex items-center justify-center bg-background/50 backdrop-blur-[1px]">
                       <RefreshCw className="h-6 w-6 animate-spin text-muted-foreground" />
                     </div>
-                  ) : null}
+                  )}
                   <CardHeader className="bg-muted/30 pb-3">
-                    <div className="flex justify-between items-start gap-2">
-                      <CardTitle className="text-sm font-semibold truncate max-w-[200px]" title={opt.run_name}>
+                    <div className="flex items-start justify-between gap-2">
+                      <CardTitle
+                        className="max-w-[200px] truncate text-sm font-semibold"
+                        title={opt.run_name}
+                      >
                         {opt.run_name}
                       </CardTitle>
                       <Button
                         variant="ghost"
                         size="sm"
                         className="h-5 w-5 p-0 text-muted-foreground hover:text-foreground"
-                        onClick={() => setSelectedScenarios(prev => prev.filter(x => x !== id))}
+                        onClick={() =>
+                          setSelectedScenarios((prev) => prev.filter((x) => x !== id))
+                        }
                       >
                         <X className="h-3 w-3" />
                       </Button>
                     </div>
-                    <p className="text-[10px] text-muted-foreground font-mono">
-                      Created: {new Date(opt.created_at).toLocaleDateString("en-US", { timeZone: "America/Phoenix" })}
+                    <p className="font-mono text-[10px] text-muted-foreground">
+                      {new Date(opt.created_at).toLocaleDateString("en-US", {
+                        timeZone: "America/Phoenix",
+                      })}
                     </p>
                   </CardHeader>
-                  <CardContent className="pt-4 space-y-4 text-xs font-sans">
+                  <CardContent className="space-y-3 pt-4 font-sans text-xs">
                     {metrics ? (
-                      <div className="space-y-3">
-                        <div className="flex justify-between items-center border-b pb-1.5 border-border">
-                          <span className="text-muted-foreground flex items-center gap-1">
-                            <DollarSign className="h-3.5 w-3.5" />
-                            Total Cost
-                          </span>
-                          <span className="num font-bold text-foreground">
-                            {metrics.totalCost.toLocaleString("en-US", { style: "currency", currency: "USD" })}
-                          </span>
-                        </div>
-                        <div className="flex justify-between items-center border-b pb-1.5 border-border">
-                          <span className="text-muted-foreground flex items-center gap-1">
-                            <Check className="h-3.5 w-3.5 text-emerald-500" />
-                            Coverage Accuracy
-                          </span>
-                          <span className="num font-bold text-foreground">
-                            {(metrics.volumeMatchedShare * 100).toFixed(1)}%
-                          </span>
-                        </div>
-                        <div className="flex justify-between items-center border-b pb-1.5 border-border">
-                          <span className="text-muted-foreground flex items-center gap-1">
-                            <Users2 className="h-3.5 w-3.5 text-violet-500" />
-                            Split-Shift Count
-                          </span>
-                          <span className="num font-bold text-foreground">
-                            {metrics.splitShiftCount} agents
-                          </span>
-                        </div>
-                        <div className="flex justify-between items-center border-b pb-1.5 border-border">
-                          <span className="text-muted-foreground flex items-center gap-1">
-                            <Home className="h-3.5 w-3.5 text-blue-500" />
-                            Peak Workstation Occupancy
-                          </span>
-                          <span className="num font-bold text-foreground">
-                            {metrics.peakCubicles} / {payload?.meta?.cubicle_cap || 34} seats
-                          </span>
-                        </div>
-                      </div>
+                      <>
+                        <CompareRow icon={<DollarSign className="h-3.5 w-3.5" />} label="Total cost">
+                          {metrics.totalCost.toLocaleString("en-US", { style: "currency", currency: "USD" })}
+                        </CompareRow>
+                        <CompareRow icon={<Check className="h-3.5 w-3.5 text-emerald-500" />} label="Coverage">
+                          {metrics.weightedCoveragePct.toFixed(1)}%
+                        </CompareRow>
+                        <CompareRow icon={<Users2 className="h-3.5 w-3.5 text-rose-500" />} label="12-hour shifts">
+                          {metrics.twelveHourCount} agents
+                        </CompareRow>
+                        <CompareRow icon={<Users2 className="h-3.5 w-3.5 text-violet-500" />} label="Split shifts">
+                          {metrics.splitShiftCount} agents
+                        </CompareRow>
+                        <CompareRow icon={<Home className="h-3.5 w-3.5 text-blue-500" />} label="Peak occupancy">
+                          {metrics.peakCubicles} / {payload?.meta?.cubicle_cap || 34} seats
+                        </CompareRow>
+                      </>
                     ) : (
-                      <div className="text-center py-6 text-muted-foreground">
+                      <div className="py-6 text-center text-muted-foreground">
                         Failed to compute comparison metrics.
                       </div>
                     )}
@@ -1058,144 +1431,8 @@ export function OptimizerTab({ snapshot, onUpdateSnapshot, optimizations }: Opti
               );
             })}
           </div>
-        </div>
+        </section>
       )}
     </div>
   );
-}
-
-function calculateScenarioMetrics(snapshotPayload: Snapshot | null | undefined) {
-  if (!snapshotPayload) return null;
-  
-  let totalCost = 0;
-  let splitShiftCount = 0;
-  let peakCubicles = 0;
-
-  // 1. Calculate Estimated Weekly Cost
-  const agents = snapshotPayload.agents || [];
-  for (const agent of agents) {
-    let rate = 18; // Default CSA Line
-    if (agent.role === "Supervisor") rate = 28;
-    else if (agent.role === "CSA" && agent.position === "Lead") rate = 22;
-    else if (agent.role === "SDS") {
-      rate = agent.position === "Lead" ? 24 : 20;
-    } else if (agent.role === "NDS") {
-      rate = 20;
-    }
-
-    const hoursPerWeek = Number(agent.effective_hours_per_week || (agent.gross_hours ? (agent.gross_hours || 8) * 5 : 40));
-    let agentWeeklyCost = hoursPerWeek * rate;
-
-    // Check split incentive eligibility
-    const v = agent.shift_id || "";
-    const isSplit = v.startsWith("WKND_") || v.startsWith("OVERNIGHT_") || v.startsWith("TWILIGHT_") || v.includes("SPLIT");
-    if (isSplit) {
-      splitShiftCount++;
-      agentWeeklyCost += 100; // $20/day * 5 days = $100 weekly bonus
-    }
-
-    totalCost += agentWeeklyCost;
-  }
-
-  // 2. Volume matched share
-  let matchedShare = 0;
-  try {
-    const DOW_LIST: DOW[] = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
-    const offered: Record<string, number[]> = {};
-    const staffed: Record<string, number[]> = {};
-    let totalVol = 0;
-    let totalStaff = 0;
-    
-    for (const d of DOW_LIST) {
-      offered[d] = snapshotPayload.volume?.offered_per_interval?.Combined?.[d] || new Array(48).fill(0);
-      
-      const csaAgents = agents.filter(a => a.role === "CSA");
-      const daySupply = new Array(48).fill(0);
-      for (const a of csaAgents) {
-        const works = a.works_days || [];
-        if (!works.includes(d as any)) continue;
-        
-        const weight = a.position === "Lead" ? 0.6 : 1.0;
-        const parsedSegs = a.structure ? a.structure.split("|") : [];
-        const perIntervalMinutes = new Array(48).fill(0);
-        let prevEnd: number | null = null;
-        for (const part of parsedSegs) {
-          const s = part.trim();
-          if (!s) continue;
-          const spaceIdx = s.lastIndexOf(" ");
-          if (spaceIdx === -1) continue;
-          const range = s.slice(0, spaceIdx).trim();
-          const kind = s.slice(spaceIdx + 1).trim();
-          const [rangeA, rangeB] = range.split("-");
-          if (!rangeA || !rangeB) continue;
-          
-          const toMin = (t: string): number => {
-            const [h, m] = t.split(":").map(Number);
-            return h * 60 + m;
-          };
-          let start = toMin(rangeA);
-          let end = toMin(rangeB);
-          if (prevEnd !== null) {
-            while (start < prevEnd) {
-              start += 1440;
-              end += 1440;
-            }
-          }
-          if (end <= start) end += 1440;
-          prevEnd = end;
-
-          if (kind === "Voice") {
-            for (let minute = start; minute < end; minute++) {
-              perIntervalMinutes[Math.floor((minute % 1440) / 30)] += 1;
-            }
-          }
-        }
-        for (let i = 0; i < 48; i++) {
-          if (perIntervalMinutes[i] >= 15) {
-            daySupply[i] += weight;
-          }
-        }
-      }
-      staffed[d] = daySupply;
-
-      for (let i = 0; i < 48; i++) {
-        totalVol += offered[d][i] ?? 0;
-        totalStaff += staffed[d][i] ?? 0;
-      }
-    }
-
-    if (totalVol > 0 && totalStaff > 0) {
-      for (const d of DOW_LIST) {
-        for (let i = 0; i < 48; i++) {
-          matchedShare += Math.min(
-            (offered[d][i] ?? 0) / totalVol,
-            (staffed[d][i] ?? 0) / totalStaff
-          );
-        }
-      }
-    }
-  } catch (err) {
-    console.error("Failed to calculate matched share in comparison:", err);
-  }
-
-  // 3. Peak Cubicles
-  try {
-    const DOW_SHORT: DOW[] = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
-    const occ = snapshotPayload.cubicles?.occupancy_by_day_hour || {};
-    for (const d of DOW_SHORT) {
-      const dayOcc = occ[d] || [];
-      for (const hVal of dayOcc) {
-        if (hVal > peakCubicles) peakCubicles = hVal;
-      }
-    }
-  } catch {
-    // ignore
-  }
-
-  return {
-    totalCost,
-    volumeMatchedShare: matchedShare,
-    splitShiftCount,
-    peakCubicles,
-  };
 }

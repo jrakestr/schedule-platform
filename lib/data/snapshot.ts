@@ -1,5 +1,6 @@
 import { cacheLife, cacheTag } from "next/cache";
-import { createReadClient } from "@/lib/supabase/server";
+import { createReadClient, createWriteClient } from "@/lib/supabase/server";
+import { normalizeSnapshotPods } from "@/lib/data/normalize-snapshot";
 import type { Snapshot } from "@/lib/data/types";
 
 export const SNAPSHOT_TAG = "platform-snapshot";
@@ -50,15 +51,28 @@ async function readOptimizationFromSupabase(optId: string): Promise<SnapshotReco
     !!process.env.SUPABASE_SERVICE_ROLE_KEY;
   if (!url || !hasKey) return null;
 
-  const supabase = createReadClient();
+  // Prefer service role on the server — get_optimization payload reads are server-only.
+  const supabase =
+    process.env.SUPABASE_SERVICE_ROLE_KEY != null
+      ? createWriteClient()
+      : createReadClient();
   const { data, error } = await supabase.rpc("get_optimization", { target_id: optId });
 
   if (error) {
     console.error(`Failed to load optimization ${optId}: ${error.message}`);
     return null;
   }
-  if (!data) return null;
-  return { payload: data as Snapshot, taken_at: new Date().toISOString() };
+  if (data == null) return null;
+
+  // get_optimization returns the snapshot jsonb payload directly.
+  const payload = (Array.isArray(data) ? data[0] : data) as Snapshot;
+  if (!payload || typeof payload !== "object" || !("meta" in payload)) {
+    console.error(
+      `get_optimization returned an unexpected shape for ${optId}; falling back.`,
+    );
+    return null;
+  }
+  return { payload, taken_at: new Date().toISOString() };
 }
 
 // Local-file fallback. Used in dev (no DB needed to run `next dev`) and as a
@@ -66,22 +80,26 @@ async function readOptimizationFromSupabase(optId: string): Promise<SnapshotReco
 // first-time deploys can complete and the publish-platform job can seed
 // Supabase afterwards. On the deployed Vercel runtime, NEXT_PUBLIC_SUPABASE_URL
 // + SUPABASE_SERVICE_ROLE_KEY will be set and Supabase wins by precedence.
+function snapshotHasAbandonVolume(payload: Snapshot): boolean {
+  const byDay = payload.volume?.abandoned_per_interval?.Combined;
+  if (!byDay) return false;
+  return Object.values(byDay).some((intervals) =>
+    intervals.some((value) => value > 0),
+  );
+}
+
 async function readFromLocalFile(): Promise<SnapshotRecord | null> {
   try {
     const fs = await import("node:fs/promises");
     const path = await import("node:path");
     const candidates = [
+      path.resolve(process.cwd(), "data", "platform-snapshot.json"),
       path.resolve(
         process.cwd(),
         "..",
         "output",
         "schedule-review-platform",
         "data.json",
-      ),
-      path.resolve(
-        process.cwd(),
-        "data",
-        "platform-snapshot.json",
       ),
     ];
     for (const candidate of candidates) {
@@ -101,16 +119,17 @@ async function readFromLocalFile(): Promise<SnapshotRecord | null> {
   }
 }
 
-async function loadSnapshotRecord(optId?: string): Promise<SnapshotRecord> {
-  if (optId) {
-    const optRecord = await readOptimizationFromSupabase(optId);
-    if (optRecord) return optRecord;
-    console.warn(`Optimization run ${optId} not found, falling back to default baseline.`);
-  }
+async function loadBaselineSnapshotRecord(): Promise<SnapshotRecord> {
+  "use cache";
+  cacheTag(SNAPSHOT_TAG);
+  cacheLife("default");
 
   const fromDb = await readFromSupabase();
-  if (fromDb) return fromDb;
   const fromFile = await readFromLocalFile();
+
+  if (fromDb && snapshotHasAbandonVolume(fromDb.payload)) return fromDb;
+  if (fromFile && snapshotHasAbandonVolume(fromFile.payload)) return fromFile;
+  if (fromDb) return fromDb;
   if (fromFile) return fromFile;
   throw new Error(
     "No snapshot available. In production set NEXT_PUBLIC_SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY and run `make publish-platform`. In dev, place data.json at ../output/schedule-review-platform/data.json.",
@@ -118,13 +137,49 @@ async function loadSnapshotRecord(optId?: string): Promise<SnapshotRecord> {
 }
 
 export async function getLatestSnapshot(optId?: string): Promise<Snapshot> {
-  const record = await loadSnapshotRecord(optId);
-  return record.payload;
+  if (optId) {
+    const optRecord = await readOptimizationFromSupabase(optId);
+    if (optRecord) return normalizeSnapshotPods(optRecord.payload);
+    console.warn(`Optimization run ${optId} not found, falling back to default baseline.`);
+  }
+
+  const record = await loadBaselineSnapshotRecord();
+  return normalizeSnapshotPods(record.payload);
+}
+
+/** Uncached read for client roster switching — bypasses `use cache` staleness. */
+export async function getLiveSnapshot(optId?: string): Promise<Snapshot> {
+  if (optId) {
+    const optRecord = await readOptimizationFromSupabase(optId);
+    if (optRecord) return normalizeSnapshotPods(optRecord.payload);
+    throw new Error(`Optimization run ${optId} not found or not succeeded.`);
+  }
+
+  const fromDb = await readFromSupabase();
+  const fromFile = await readFromLocalFile();
+
+  if (fromDb && snapshotHasAbandonVolume(fromDb.payload)) {
+    return normalizeSnapshotPods(fromDb.payload);
+  }
+  if (fromFile && snapshotHasAbandonVolume(fromFile.payload)) {
+    return normalizeSnapshotPods(fromFile.payload);
+  }
+  if (fromDb) return normalizeSnapshotPods(fromDb.payload);
+  if (fromFile) return normalizeSnapshotPods(fromFile.payload);
+
+  throw new Error(
+    "No snapshot available. In production set NEXT_PUBLIC_SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY and run `make publish-platform`.",
+  );
 }
 
 export async function getSnapshotTakenAt(optId?: string): Promise<string | null> {
   try {
-    const record = await loadSnapshotRecord(optId);
+    if (optId) {
+      const optRecord = await readOptimizationFromSupabase(optId);
+      if (optRecord) return optRecord.taken_at;
+      return null;
+    }
+    const record = await loadBaselineSnapshotRecord();
     return record.taken_at;
   } catch {
     return null;

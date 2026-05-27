@@ -38,7 +38,7 @@ export function coverageRatio(
   snapshot: Snapshot,
   leadPct: number,
   fn: "Combined" | "Reservations" | "ETA" | "Cancellations" = "Combined",
-): number {
+): number | null {
   let req = 0;
   let cov = 0;
   for (const d of DOW_LIST) {
@@ -54,5 +54,5 @@ export function coverageRatio(
       cov += Math.min(r[i] ?? 0, sup);
     }
   }
-  return req ? cov / req : 1;
+  return req > 0 ? cov / req : null;
 }

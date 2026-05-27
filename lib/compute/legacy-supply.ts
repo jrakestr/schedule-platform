@@ -743,17 +743,15 @@ export function getLegacyOnDutyStaff(day: DOW, hour: number) {
   }).map((m) => {
     const shift = m.schedule[day];
     const parts = shift.replace(/\s+/g, "").split("-");
-    const formattedStart = `${parts[0].slice(0, 2)}:${parts[0].slice(2, 4)}`;
-    const formattedEnd = `${parts[1].slice(0, 2)}:${parts[1].slice(2, 4)}`;
-    
+
     return {
       agent: {
         id: m.name,
         role: m.role,
         position: m.role === "Supervisor" ? "Supervisor" : m.role === "Spanish CSR" ? "CSR" : "Line",
         shift_id: m.role,
-        start_clock: formattedStart,
-        end_clock: formattedEnd,
+        start_clock: parts[0],
+        end_clock: parts[1],
       },
       voiceMinutes: 60,
     };

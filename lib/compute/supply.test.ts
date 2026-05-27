@@ -74,4 +74,48 @@ describe("agentSupply", () => {
     const supply = agentSupply([lead], "Mon", 0.6);
     expect(supply[16]).toBeCloseTo(0.6, 5);
   });
+
+  it("attributes overnight post-midnight minutes to the next calendar day", () => {
+    // Mon-starting agent with a 22:00-02:00 Voice shift. The 00:00–02:00
+    // portion belongs to Tuesday, NOT Monday — sibling getAgentsOnDuty has
+    // always rotated this correctly, agentSupply was the outlier.
+    const overnight: Agent = {
+      ...baseAgent,
+      id: "CSA_Overnight_001",
+      shift_id: "PM_OVERNIGHT_2200",
+      shift_class: "PM_OVERNIGHT",
+      start_clock: "22:00",
+      end_clock: "02:00",
+      works_days: ["Mon"],
+      structure: "22:00-02:00 Voice",
+    };
+
+    const monSupply = agentSupply([overnight], "Mon", 1);
+    const tueSupply = agentSupply([overnight], "Tue", 1);
+
+    // Mon evening 22:00–24:00 = intervals 44..47 should each register 1
+    expect(monSupply[44]).toBe(1);
+    expect(monSupply[47]).toBe(1);
+    // Mon early-morning 00:00–02:00 = intervals 0..3 should be ZERO — the
+    // agent isn't on duty Mon early-morning, they're on duty TUE early-morning.
+    expect(monSupply[0]).toBe(0);
+    expect(monSupply[3]).toBe(0);
+    // Tue intervals 0..3 should each register 1 (rotated from the Mon start)
+    expect(tueSupply[0]).toBe(1);
+    expect(tueSupply[3]).toBe(1);
+  });
+});
+
+describe("parseSegs regressions", () => {
+  it("parses a single-segment structure regardless of kind label", () => {
+    // Prior bug: a substring guard returned [] for any single-segment
+    // structure that didn't literally contain the word 'Voice', silently
+    // dropping otherwise-valid shifts.
+    expect(parseSegs("08:00-16:00 phones")).toEqual([
+      { start: 480, end: 960, kind: "phones" },
+    ]);
+    expect(parseSegs("08:00-16:00 Break")).toEqual([
+      { start: 480, end: 960, kind: "Break" },
+    ]);
+  });
 });

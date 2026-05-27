@@ -1,13 +1,37 @@
-// Ports of supervisorsOnDuty and csaVoiceMinutesGrid from the HTML platform.
-// supervisorsOnDuty mirrors scripts/solve_supervisor_schedule.py::shift_covers_hour
-// so the UI is self-consistent with the solver. csaVoiceMinutesGrid rotates
-// overnight minutes onto the correct calendar day.
+// supervisorsOnDuty uses assignment clock hours (not rigid 06:00-18:00 blocks).
 
 import type {
   Agent,
+  Assignment,
   SupervisorSchedule,
   Pod,
 } from "@/lib/data/types";
+
+function parseClockMinutes(clock: string): number {
+  const [h, m] = clock.split(":").map(Number);
+  return h * 60 + (m || 0);
+}
+
+/** True when an assignment starting on weekday_idx covers target (day, hour). */
+function assignmentCoversHour(
+  assignment: Assignment,
+  targetDayIdx: number,
+  targetHour: number,
+): boolean {
+  const [startStr, endStr] = (assignment.hours || "06:00-18:00").split("-");
+  const startMin = parseClockMinutes(startStr);
+  const endMin = parseClockMinutes(endStr);
+  const start = assignment.weekday_idx * 24 + startMin / 60;
+  let end = assignment.weekday_idx * 24 + endMin / 60;
+  if (endMin <= startMin) {
+    end += 24;
+  }
+  const target = targetDayIdx * 24 + targetHour;
+  return (
+    (start <= target && target < end) ||
+    (start <= target + 7 * 24 && target + 7 * 24 < end)
+  );
+}
 
 export function supervisorsOnDuty(
   schedule: SupervisorSchedule,
@@ -15,17 +39,9 @@ export function supervisorsOnDuty(
   hour: number,
 ): string[] {
   const onDuty: string[] = [];
-  const target = dayIdx * 24 + hour;
   for (const sup of schedule.supervisors) {
     for (const a of sup.assignments) {
-      const startH = a.shift_type === "DAY" ? 6 : 18;
-      const endH = a.shift_type === "DAY" ? 18 : 30;
-      const start = a.weekday_idx * 24 + startH;
-      const end = a.weekday_idx * 24 + endH;
-      if (
-        (start <= target && target < end) ||
-        (start <= target + 168 && target + 168 < end)
-      ) {
+      if (assignmentCoversHour(a, dayIdx, hour)) {
         onDuty.push(sup.id);
         break;
       }

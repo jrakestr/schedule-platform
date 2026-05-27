@@ -12,20 +12,64 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
+import { formatClock24 } from "@/lib/compute/day-structure";
 
 interface ShapeChartProps {
   offered: number[];
   supplied: number[];
   legacySupplied?: number[];
+  manualSupplied?: number[];
   viewMode?: "proposed" | "legacy" | "compare";
   intervals: string[];
   metricMode: "share" | "raw";
+}
+
+interface ShapeTooltipProps {
+  active?: boolean;
+  payload?: Array<{ dataKey?: string; value?: number; color?: string }>;
+  label?: string;
+  metricMode: "share" | "raw";
+}
+
+function ShapeTooltip({ active, payload, label, metricMode }: ShapeTooltipProps) {
+  if (!active || !payload?.length || !label) return null;
+
+  const lines = payload
+    .map((entry) => {
+      const key = entry.dataKey;
+      const value = Number(entry.value ?? 0);
+      if (metricMode === "share") {
+        if (key === "volume") return `${value.toFixed(1)}% calls`;
+        if (key === "staff") return `${value.toFixed(1)}% CSAs`;
+        if (key === "legacyStaff") return `${value.toFixed(1)}% legacy CSAs`;
+        if (key === "manualStaff") return `${value.toFixed(1)}% schedulers + supervisors`;
+        return null;
+      }
+      if (key === "rawVolume") return `${Math.round(value)} calls`;
+      if (key === "rawStaff") return `${value.toFixed(1)} CSAs`;
+      if (key === "rawLegacyStaff") return `${value.toFixed(1)} legacy CSAs`;
+      if (key === "rawManualStaff") return `${value.toFixed(1)} schedulers + supervisors`;
+      return null;
+    })
+    .filter((line): line is string => Boolean(line));
+
+  return (
+    <div className="rounded-md border bg-popover px-2.5 py-1.5 text-xs shadow-md">
+      <div className="font-medium">{formatClock24(label)}</div>
+      {lines.map((line) => (
+        <div key={line} className="text-muted-foreground">
+          {line}
+        </div>
+      ))}
+    </div>
+  );
 }
 
 export function ShapeChart({
   offered,
   supplied,
   legacySupplied,
+  manualSupplied,
   viewMode = "proposed",
   intervals,
   metricMode,
@@ -33,21 +77,21 @@ export function ShapeChart({
   const offTotal = offered.reduce((s, v) => s + v, 0) || 1;
   const supTotal = supplied.reduce((s, v) => s + v, 0) || 1;
   const legacyTotal = legacySupplied ? legacySupplied.reduce((s, v) => s + v, 0) || 1 : 1;
+  const manualTotal = manualSupplied ? manualSupplied.reduce((s, v) => s + v, 0) || 1 : 1;
 
   const data = intervals.map((label, i) => ({
     interval: label,
     volume: (offered[i] / offTotal) * 100,
     staff: (supplied[i] / supTotal) * 100,
     legacyStaff: legacySupplied ? (legacySupplied[i] / legacyTotal) * 100 : 0,
+    manualStaff: manualSupplied ? (manualSupplied[i] / manualTotal) * 100 : 0,
     rawVolume: offered[i],
     rawStaff: supplied[i],
     rawLegacyStaff: legacySupplied ? legacySupplied[i] : 0,
+    rawManualStaff: manualSupplied ? manualSupplied[i] : 0,
   }));
 
   const ticks = ["00:00", "03:00", "06:00", "09:00", "12:00", "15:00", "18:00", "21:00"];
-  // Uniform reference: a perfectly flat 24h schedule would put 1/48 = ~2.08%
-  // of staff into each 30-min interval. Drawing this as a dashed line lets
-  // reviewers see at a glance which hours are above/below "evenly spread."
   const uniformShare = 100 / 48;
 
   return (
@@ -95,27 +139,7 @@ export function ShapeChart({
             </>
           )}
           <Tooltip
-            contentStyle={{
-              backgroundColor: "hsl(var(--popover))",
-              border: "1px solid hsl(var(--border))",
-              borderRadius: 6,
-              fontSize: 12,
-            }}
-            formatter={(value: number, name: string, props: any) => {
-              const key = props?.dataKey;
-              if (metricMode === "share") {
-                if (key === "volume") return [`${value.toFixed(2)}%`, "Call volume share"];
-                if (key === "staff") return [`${value.toFixed(2)}%`, "Proposed Scheduled CSA share"];
-                if (key === "legacyStaff") return [`${value.toFixed(2)}%`, "Current/Legacy Scheduled CSA share"];
-                return [`${value.toFixed(2)}%`, name];
-              } else {
-                if (key === "rawVolume") return [`${Math.round(value)} calls`, "Call volume"];
-                if (key === "rawStaff") return [`${value.toFixed(1)} agents`, "Proposed Scheduled CSAs"];
-                if (key === "rawLegacyStaff") return [`${value.toFixed(1)} agents`, "Current/Legacy Scheduled CSAs"];
-                return [value, name];
-              }
-            }}
-            labelFormatter={(label) => `Interval ${label}`}
+            content={<ShapeTooltip metricMode={metricMode} />}
           />
           {metricMode === "share" && (
             <ReferenceLine
@@ -135,7 +159,7 @@ export function ShapeChart({
           <Area
             type="monotone"
             dataKey={metricMode === "share" ? "volume" : "rawVolume"}
-            name={metricMode === "share" ? "Call volume share" : "Call volume"}
+            name={metricMode === "share" ? "Calls" : "Calls"}
             stroke="#475569"
             strokeWidth={2}
             fill="url(#vol-fill)"
@@ -145,7 +169,7 @@ export function ShapeChart({
             <Line
               type="monotone"
               dataKey={metricMode === "share" ? "staff" : "rawStaff"}
-              name={metricMode === "share" ? "Proposed Scheduled CSA share" : "Proposed Scheduled CSAs"}
+              name={metricMode === "share" ? "CSAs" : "CSAs"}
               stroke="#4f46e5"
               strokeWidth={2}
               dot={false}
@@ -156,9 +180,21 @@ export function ShapeChart({
             <Line
               type="monotone"
               dataKey={metricMode === "share" ? "legacyStaff" : "rawLegacyStaff"}
-              name={metricMode === "share" ? "Current/Legacy Scheduled CSA share" : "Current/Legacy Scheduled CSAs"}
+              name={metricMode === "share" ? "Legacy CSAs" : "Legacy CSAs"}
               stroke="#ea580c"
               strokeWidth={2}
+              dot={false}
+              yAxisId={metricMode === "raw" ? "right" : "left"}
+            />
+          )}
+          {manualSupplied && (
+            <Line
+              type="monotone"
+              dataKey={metricMode === "share" ? "manualStaff" : "rawManualStaff"}
+              name="Schedulers + Supervisors (manual)"
+              stroke="#10b981"
+              strokeWidth={2}
+              strokeDasharray="5 3"
               dot={false}
               yAxisId={metricMode === "raw" ? "right" : "left"}
             />

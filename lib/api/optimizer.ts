@@ -1,4 +1,5 @@
 import { optimizerConstraintsSchema, type OptimizerConstraints } from "../data/schemas";
+import type { ZodError } from "zod";
 
 export class OptimizerLaunchError extends Error {
   public readonly status?: number;
@@ -26,6 +27,31 @@ interface LaunchResponse {
   message?: string;
 }
 
+function formatValidationErrors(error: ZodError): string {
+  return error.issues
+    .map((issue) => {
+      const path = issue.path.length > 0 ? issue.path.join(".") : "payload";
+      return `${path}: ${issue.message}`;
+    })
+    .join("; ");
+}
+
+function debugPreflightLog(message: string, data: Record<string, unknown>, hypothesisId: string) {
+  const ingestUrl = process.env.NEXT_PUBLIC_DEBUG_INGEST_URL;
+  if (!ingestUrl) return;
+  fetch(ingestUrl, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      location: "optimizer.ts:launchOptimization",
+      message,
+      data,
+      hypothesisId,
+      timestamp: Date.now(),
+    }),
+  }).catch(() => {});
+}
+
 export async function launchOptimization(
   payload: OptimizerConstraints,
   timeoutMs: number = 15000
@@ -33,12 +59,28 @@ export async function launchOptimization(
   // Pre-flight checks on client side
   const validation = optimizerConstraintsSchema.safeParse(payload);
   if (!validation.success) {
-    throw new OptimizerLaunchError("Pre-flight validation failed.", {
+    const formatted = formatValidationErrors(validation.error);
+    debugPreflightLog(
+      "preflight validation failed",
+      { formatted, issues: validation.error.issues, payload },
+      "A",
+    );
+    throw new OptimizerLaunchError(`Pre-flight validation failed: ${formatted}`, {
       code: "PREFLIGHT_VALIDATION_ERROR",
       details: validation.error.format(),
       payload,
     });
   }
+
+  debugPreflightLog(
+    "preflight validation succeeded",
+    {
+      name: validation.data.name,
+      cubicleCap: validation.data.cubicleCap,
+      shiftKeys: Object.keys(validation.data.shifts),
+    },
+    "B",
+  );
 
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
@@ -73,13 +115,6 @@ export async function launchOptimization(
     return (await response.json()) as LaunchResponse;
   } catch (error: any) {
     clearTimeout(timeoutId);
-    
-    console.group("❌ Optimizer Launch Failure");
-    console.error("Reason:", error.message);
-    if (error instanceof OptimizerLaunchError) {
-      console.error("Details:", error.details);
-    }
-    console.groupEnd();
 
     if (error instanceof OptimizerLaunchError) throw error;
     if (error.name === "AbortError") {
@@ -94,5 +129,31 @@ export async function launchOptimization(
       details: error,
       payload,
     });
+  }
+}
+
+export class OptimizerDeleteError extends Error {
+  public readonly status?: number;
+  public readonly details?: unknown;
+
+  constructor(message: string, options?: { status?: number; details?: unknown }) {
+    super(message);
+    this.name = "OptimizerDeleteError";
+    this.status = options?.status;
+    this.details = options?.details;
+  }
+}
+
+export async function deleteOptimizationRun(runId: string): Promise<void> {
+  const response = await fetch(`/api/optimize/delete?id=${encodeURIComponent(runId)}`, {
+    method: "DELETE",
+  });
+
+  if (!response.ok) {
+    const errorBody = await response.json().catch(() => ({}));
+    throw new OptimizerDeleteError(
+      errorBody.error || `Failed to delete optimization run (${response.status}).`,
+      { status: response.status, details: errorBody.details ?? null },
+    );
   }
 }

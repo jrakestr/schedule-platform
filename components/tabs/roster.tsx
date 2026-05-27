@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 import { useQueryState, parseAsString } from "nuqs";
 import {
   type ColumnDef,
@@ -23,6 +23,8 @@ import {
   Search,
   X,
 } from "lucide-react";
+import { AgentLink } from "@/components/agent/agent-link";
+import { TeamLink } from "@/components/team/team-link";
 import { SectionCard } from "@/components/shared/section-card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -42,10 +44,13 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { shiftColor } from "@/lib/compute/colors";
+import {
+  shiftColor,
+  roleBadgeClass,
+} from "@/lib/compute/colors";
 import { rosterRowsFor, type RosterRow } from "@/lib/compute/roster";
 import { cn } from "@/lib/utils";
-import type { Snapshot } from "@/lib/data/types";
+import { type Snapshot } from "@/lib/data/types";
 
 interface RosterTabProps {
   snapshot: Snapshot;
@@ -62,8 +67,6 @@ function parseClock(t: string): number | null {
   return Number(m[1]) * 60 + Number(m[2]);
 }
 
-// True if the (possibly-overnight) shift between start and end covers the
-// given hour. Mirrors parseSegs's wrap-past-midnight rule.
 function shiftCoversHour(
   startClock: string,
   endClock: string,
@@ -81,9 +84,33 @@ function shiftCoversHour(
   );
 }
 
+function rosterOperationalRole(role: string, position: string): string | null {
+  if (!role) return null;
+  if (role === "Supervisor") return "Supervisor";
+  if (role === "CSA") return position === "Lead" ? "CSA Lead" : "CSA";
+  if (role === "SDS") return position === "Lead" ? "SDS Lead" : "SDS";
+  if (role === "NDS") return "NDS";
+  return role;
+}
+
 export function RosterTab({ snapshot }: RosterTabProps) {
+  const [roleParam] = useQueryState("role", parseAsString);
   const [roleFilter, setRoleFilter] = useState<RoleFilter>("All");
   const [positionFilter, setPositionFilter] = useState<PositionFilter>("All");
+
+  useEffect(() => {
+    if (!roleParam) return;
+    if (roleParam === "Lead") {
+      setRoleFilter("All");
+      setPositionFilter("Lead");
+      return;
+    }
+    const match = ROLES.find((r) => r === roleParam);
+    if (match) {
+      setRoleFilter(match);
+      if (roleParam !== "Supervisor") setPositionFilter("All");
+    }
+  }, [roleParam]);
   const [sorting, setSorting] = useState<SortingState>([]);
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
   const [columnVisibility, setColumnVisibility] = useState<VisibilityState>({});
@@ -129,34 +156,46 @@ export function RosterTab({ snapshot }: RosterTabProps) {
       {
         accessorKey: "id",
         header: "Agent",
-        cell: ({ row }) => (
-          <span
-            className={cn(
-              "font-mono text-xs",
-              row.original.isContinuation && "text-muted-foreground/60",
-            )}
-          >
-            {row.original.id || "↳"}
-          </span>
-        ),
+        cell: ({ row }) =>
+          row.original.id ? (
+            <AgentLink
+              agentId={row.original.id}
+              className={cn(
+                row.original.isContinuation && "text-muted-foreground/60",
+              )}
+            />
+          ) : (
+            <span className="text-muted-foreground/60 text-xs">↳</span>
+          ),
       },
       {
         accessorKey: "role",
         header: "Role",
-        cell: ({ row }) => (
-          <span className="text-sm">{row.original.role}</span>
-        ),
+        cell: ({ row }) => {
+          const label = rosterOperationalRole(
+            row.original.role,
+            row.original.position,
+          );
+          if (!label) return null;
+          return (
+            <Badge variant="outline" className={roleBadgeClass(label)}>
+              {label}
+            </Badge>
+          );
+        },
       },
       {
         accessorKey: "position",
         header: "Position",
         cell: ({ row }) =>
-          row.original.position === "Lead" ? (
-            <Badge variant="warning">{row.original.position}</Badge>
+          row.original.position === "Line" ? (
+            <span className="text-sm text-muted-foreground">{row.original.position}</span>
           ) : row.original.position === "Supervisor" ? (
-            <Badge variant="secondary">{row.original.position}</Badge>
-          ) : row.original.position ? (
-            <span className="text-sm">{row.original.position}</span>
+            <Badge variant="outline" className={roleBadgeClass("Supervisor")}>
+              Supervisor
+            </Badge>
+          ) : row.original.position === "Lead" ? (
+            <span className="text-sm text-muted-foreground">Lead</span>
           ) : null,
       },
       {
@@ -165,38 +204,14 @@ export function RosterTab({ snapshot }: RosterTabProps) {
         cell: ({ row }) => {
           const v = row.original.shift;
           if (!v) return null;
-          const isSplitIncentive =
-            v.startsWith("WKND_") ||
-            v.startsWith("OVERNIGHT_") ||
-            v.startsWith("TWILIGHT_") ||
-            v.includes("SPLIT");
-
           return (
-            <div className="inline-flex items-center gap-2 flex-wrap">
-              <span className="font-mono text-xs inline-flex items-center gap-1.5">
-                <span
-                  className="inline-block w-2 h-2 rounded-sm"
-                  style={{ background: shiftColor(v) }}
-                />
-                {v}
-              </span>
-              {isSplitIncentive && (
-                <div className="inline-flex gap-1">
-                  <Badge
-                    variant="outline"
-                    className="text-[9px] h-4 px-1 bg-emerald-50 dark:bg-emerald-950/20 text-emerald-700 dark:text-emerald-400 border-emerald-200 dark:border-emerald-900/40"
-                  >
-                    WFH
-                  </Badge>
-                  <Badge
-                    variant="outline"
-                    className="text-[9px] h-4 px-1 bg-amber-50 dark:bg-amber-950/20 text-amber-700 dark:text-amber-400 border-amber-200 dark:border-amber-900/40"
-                  >
-                    +$20/Day
-                  </Badge>
-                </div>
-              )}
-            </div>
+            <span className="font-mono text-xs inline-flex items-center gap-1.5">
+              <span
+                className="inline-block w-2 h-2 rounded-sm"
+                style={{ background: shiftColor(v) }}
+              />
+              {v}
+            </span>
           );
         },
       },
@@ -225,17 +240,23 @@ export function RosterTab({ snapshot }: RosterTabProps) {
       },
       {
         accessorKey: "pod",
-        header: "Pod",
-        cell: ({ row }) => (
-          <span className="text-sm">{row.original.pod}</span>
-        ),
+        header: "Team",
+        cell: ({ row }) =>
+          row.original.pod && row.original.pod !== "—" ? (
+            <TeamLink teamName={row.original.pod} className="text-sm font-normal" />
+          ) : (
+            <span className="text-sm text-muted-foreground">—</span>
+          ),
       },
       {
         accessorKey: "reports_to",
         header: "Reports to",
-        cell: ({ row }) => (
-          <span className="font-mono text-xs">{row.original.reports_to}</span>
-        ),
+        cell: ({ row }) =>
+          row.original.reports_to && row.original.reports_to !== "—" ? (
+            <AgentLink agentId={row.original.reports_to} />
+          ) : (
+            <span className="font-mono text-xs text-muted-foreground">—</span>
+          ),
       },
       {
         accessorKey: "hours",

@@ -1,22 +1,82 @@
 import { z } from "zod";
 
+const durationHmSchema = z
+  .string()
+  .trim()
+  .regex(/^\d{1,2}:\d{2}$/, "Duration must use H:MM or HH:MM format");
+
+export const workLimitationsSchema = z.object({
+  maxWorkTime: durationHmSchema,
+  maxStretch: z.object({
+    enabled: z.boolean(),
+    time: durationHmSchema,
+  }),
+  breaks: z.object({
+    enabled: z.boolean(),
+    every: durationHmSchema,
+    length: durationHmSchema,
+  }),
+});
+
+export type WorkLimitations = z.infer<typeof workLimitationsSchema>;
+
+export const SHIFT_MAX_COUNT_LIMIT = 200;
+export const CUBICLE_CAP_LIMIT = 200;
+export const FLEX_SHIFT_MAX = 50;
+
+export const flexShiftAssignmentSchema = z.object({
+  enabled: z.boolean().default(false),
+  flexEarlyMaxCount: z
+    .number()
+    .int()
+    .nonnegative("Flex-early count cannot be negative")
+    .max(FLEX_SHIFT_MAX, `Flex-early count cannot exceed ${FLEX_SHIFT_MAX}`)
+    .default(0),
+  cleanupLateMaxCount: z
+    .number()
+    .int()
+    .nonnegative("Cleanup-late count cannot be negative")
+    .max(FLEX_SHIFT_MAX, `Cleanup-late count cannot exceed ${FLEX_SHIFT_MAX}`)
+    .default(0),
+});
+
+export type FlexShiftAssignment = z.infer<typeof flexShiftAssignmentSchema>;
+
 export const shiftConstraintSchema = z.object({
   enabled: z.boolean(),
-  maxCount: z.number().int().nonnegative("Maximum count cannot be negative"),
-}); // Removed .strict() to allow safe client/telemetry metadata stripping
+  maxCount: z
+    .number()
+    .int()
+    .nonnegative("Maximum count cannot be negative")
+    .max(SHIFT_MAX_COUNT_LIMIT, `Maximum count cannot exceed ${SHIFT_MAX_COUNT_LIMIT}`),
+});
 
 export const optimizerConstraintsSchema = z.object({
-  name: z.string().trim().min(3, "Optimization run name must be at least 3 characters"),
-  // Normalize empty strings to null for consistent DB state
-  notes: z.string().trim().max(500).optional().nullable().transform(val => val || null),
-  cubicleCap: z.number().int().positive("Cubicle capacity must be a positive number"),
+  name: z.string().trim().min(3, "Optimization run name must be at least 3 characters").max(120, "Optimization run name is too long"),
+  notes: z
+    .union([z.string().trim().max(500), z.null()])
+    .optional()
+    .transform((val) => val ?? null),
+  cubicleCap: z
+    .number()
+    .int()
+    .positive("Cubicle capacity must be a positive number")
+    .max(CUBICLE_CAP_LIMIT, `Cubicle capacity cannot exceed ${CUBICLE_CAP_LIMIT}`)
+    .default(26),
   shifts: z.object({
     sixHour: shiftConstraintSchema,
     eightHour: shiftConstraintSchema,
     tenHour: shiftConstraintSchema,
     twelveHour: shiftConstraintSchema,
+    splitShift: shiftConstraintSchema,
   }),
-}); // Removed .strict() for pipeline resiliency
+  workLimitations: workLimitationsSchema.optional(),
+  flexShifts: flexShiftAssignmentSchema.optional(),
+  staggerStarts: z.boolean().default(true),
+  // CSA-only optimization. SDS / Next Day / Supervisor are managed manually
+  // via analytics.legacy_roster.
+  scope: z.literal("csa").default("csa"),
+});
 
 export type ShiftConstraint = z.infer<typeof shiftConstraintSchema>;
 export type OptimizerConstraints = z.infer<typeof optimizerConstraintsSchema>;

@@ -23,3 +23,10 @@ export function f1(v: number): string {
 export function sum(a: number[]): number {
   return a.reduce((x, y) => x + y, 0);
 }
+
+export function fmtDuration(seconds: number | null | undefined): string {
+  if (seconds == null || !Number.isFinite(seconds) || seconds <= 0) return "—";
+  const m = Math.floor(seconds / 60);
+  const s = Math.round(seconds % 60);
+  return `${m}:${String(s).padStart(2, "0")}`;
+}

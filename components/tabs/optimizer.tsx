@@ -33,7 +33,10 @@ import {
   WorkLimitationsPanel,
   DEFAULT_WORK_LIMITATIONS,
 } from "@/components/optimizer/work-limitations-panel";
-import type { FlexShiftAssignment, WorkLimitations } from "@/lib/data/schemas";
+import type {
+  FlexShiftAssignment,
+  WorkLimitations,
+} from "@/lib/data/schemas";
 
 const DEFAULT_FLEX_SHIFTS: FlexShiftAssignment = {
   enabled: false,
@@ -486,49 +489,58 @@ export function OptimizerTab({ snapshot, baselineSnapshot, optimizations }: Opti
 
   const router = useRouter();
 
+  // Defaults: only 6h and 8h shifts are on. 10h/12h/SPLIT are off by default
+  // because each would push agents over the 40h weekly cap (10h × 5 = 50h,
+  // 12h × 5 = 60h) or because their 12h spread is visually confusing (SPLIT
+  // pays 8h but spans 12h). Users can opt in per category — those toggles
+  // explicitly choose to allow long shifts in the next optimization run.
   const [shifts, setShifts] = useState<Record<ShiftKey, ShiftConstraint>>({
     sixHour: {
       enabled: true,
       mode: "count",
-      maxCount: 6,
-      percentage: 15,
+      maxCount: 20,
+      percentage: 30,
     },
     eightHour: {
       enabled: true,
       mode: "count",
-      maxCount: 36,
-      percentage: 80,
+      maxCount: 47,
+      percentage: 100,
     },
     tenHour: {
-      enabled: true,
+      enabled: false,
       mode: "count",
       maxCount: 8,
       percentage: 20,
     },
     twelveHour: {
-      enabled: true,
+      enabled: false,
       mode: "count",
       maxCount: 8,
       percentage: 15,
     },
     splitShift: {
-      enabled: true,
+      enabled: false,
       mode: "count",
-      maxCount: 8,
-      percentage: 20,
+      maxCount: 12,
+      percentage: 25,
     },
   });
 
   const csaCount = snapshot?.meta?.role_counts?.CSA ?? 36;
-  const sdsCount = snapshot?.meta?.role_counts?.SDS ?? 8;
-  const ndsCount = snapshot?.meta?.role_counts?.NDS ?? 3;
-  const cubicleCap = snapshot?.meta?.cubicle_cap ?? snapshot?.cubicles?.cap ?? 34;
+  const cubicleCap = snapshot?.meta?.cubicle_cap ?? snapshot?.cubicles?.cap ?? 26;
 
   const [customCubicleCap, setCustomCubicleCap] = useState(cubicleCap);
   const [workLimitations, setWorkLimitations] = useState<WorkLimitations>(
     DEFAULT_WORK_LIMITATIONS,
   );
   const [flexShifts, setFlexShifts] = useState<FlexShiftAssignment>(DEFAULT_FLEX_SHIFTS);
+  // Stagger starts is on by default. When off, the solver stacks agents at
+  // the same clock-in minute (seating/handoff workflows).
+  const [staggerStarts, setStaggerStarts] = useState(true);
+  // Optimizer is CSA-only. SDS / Next Day / Supervisor are manually managed
+  // via analytics.legacy_roster.
+  const scope = "csa" as const;
 
   useEffect(() => {
     setCustomCubicleCap(cubicleCap);
@@ -623,23 +635,21 @@ export function OptimizerTab({ snapshot, baselineSnapshot, optimizations }: Opti
 
     const maxEnabledCount = Object.keys(shifts).reduce((sum, key) => {
       const sc = shifts[key as ShiftKey];
-      return sum + (sc.enabled ? getAbsoluteCount(sc, csaCount + sdsCount + ndsCount) : 0);
+      return sum + (sc.enabled ? getAbsoluteCount(sc, csaCount) : 0);
     }, 0);
 
-    const isHeadcountInfeasible = maxEnabledCount < (csaCount + sdsCount + ndsCount);
+    const isHeadcountInfeasible = maxEnabledCount < csaCount;
 
     return {
       isBlocked: blockedIntervals.length > 0 || isHeadcountInfeasible,
       blockedIntervals,
       isHeadcountInfeasible,
       maxEnabledCount,
-      totalRequired: csaCount + sdsCount + ndsCount,
+      totalRequired: csaCount,
     };
-  }, [snapshot, customCubicleCap, shifts, csaCount, sdsCount, ndsCount]);
+  }, [snapshot, customCubicleCap, shifts, csaCount]);
 
-  const TOTAL_HEADCOUNT = useMemo(() => {
-    return csaCount + sdsCount + ndsCount;
-  }, [csaCount, sdsCount, ndsCount]);
+  const TOTAL_HEADCOUNT = csaCount;
 
   const handleShiftChange = useCallback((key: ShiftKey, updated: ShiftConstraint) => {
     setShifts((prev) => ({
@@ -713,6 +723,8 @@ export function OptimizerTab({ snapshot, baselineSnapshot, optimizations }: Opti
       cubicleCap: toSafeCubicleCap(customCubicleCap),
       workLimitations,
       flexShifts,
+      staggerStarts,
+      scope,
       shifts: {
         sixHour: {
           enabled: shifts.sixHour.enabled,
@@ -972,6 +984,33 @@ export function OptimizerTab({ snapshot, baselineSnapshot, optimizations }: Opti
                 disabled={isSolving || isViewer}
               />
             </div>
+
+            <div className="space-y-3">
+              <SubsectionLabel>Start times</SubsectionLabel>
+              <div className="rounded-lg border border-border/60 bg-card p-4 shadow-sm">
+                <label className="flex items-start gap-3 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={staggerStarts}
+                    onChange={(e) => setStaggerStarts(e.target.checked)}
+                    disabled={isSolving || isViewer}
+                    className="mt-0.5 h-4 w-4 rounded border-border text-primary focus:ring-2 focus:ring-ring"
+                  />
+                  <div className="space-y-1">
+                    <div className="text-sm font-medium text-foreground">
+                      Stagger start times
+                    </div>
+                    <p className="text-xs text-muted-foreground leading-relaxed">
+                      On (default): max 2 CSAs / 1 Lead per role can start at the
+                      same clock-in minute. Off: stack multiple agents at the
+                      same start time (useful for shared briefings or rotating
+                      through cubicles).
+                    </p>
+                  </div>
+                </label>
+              </div>
+            </div>
+
           </div>
 
           {/* Right: Run action (4/12, sticky on lg+) */}

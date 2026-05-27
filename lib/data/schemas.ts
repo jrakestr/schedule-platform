@@ -62,7 +62,7 @@ export const optimizerConstraintsSchema = z.object({
     .int()
     .positive("Cubicle capacity must be a positive number")
     .max(CUBICLE_CAP_LIMIT, `Cubicle capacity cannot exceed ${CUBICLE_CAP_LIMIT}`)
-    .default(34),
+    .default(26),
   shifts: z.object({
     sixHour: shiftConstraintSchema,
     eightHour: shiftConstraintSchema,
@@ -72,6 +72,10 @@ export const optimizerConstraintsSchema = z.object({
   }),
   workLimitations: workLimitationsSchema.optional(),
   flexShifts: flexShiftAssignmentSchema.optional(),
+  staggerStarts: z.boolean().default(true),
+  // CSA-only optimization. SDS / Next Day / Supervisor are managed manually
+  // via analytics.legacy_roster.
+  scope: z.literal("csa").default("csa"),
 });
 
 export type ShiftConstraint = z.infer<typeof shiftConstraintSchema>;

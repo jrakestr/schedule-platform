@@ -17,7 +17,7 @@ import {
 
 const execFilePromise = promisify(execFile);
 
-const DEFAULT_CUBICLE_CAP = 34;
+const DEFAULT_CUBICLE_CAP = 26;
 const SOLVER_TIMEOUT_MS = 3 * 60 * 1000;
 const DOCKER_IMAGE = "schedule-optimizer-container";
 const UUID_RE =
@@ -28,9 +28,11 @@ type RunStatus = "pending" | "running" | "succeeded" | "failed";
 type RunConstraints = {
   shifts: Record<string, { enabled: boolean; maxCount: number }>;
   cubicleCap: number;
+  scope: "csa";
   workLimitations?: WorkLimitations;
   scheduleOptions?: {
     flexShiftAssignment?: FlexShiftAssignment;
+    staggerStarts?: boolean;
   };
 };
 
@@ -346,11 +348,25 @@ export async function POST(request: Request) {
       );
     }
 
-    const { name, notes, shifts, cubicleCap, workLimitations, flexShifts } = validation.data;
-    const scheduleOptions =
-      flexShifts && flexShifts.enabled
+    const {
+      name,
+      notes,
+      shifts,
+      cubicleCap,
+      workLimitations,
+      flexShifts,
+      staggerStarts,
+      scope,
+    } = validation.data;
+    const scheduleOptions = {
+      ...(flexShifts && flexShifts.enabled
         ? { flexShiftAssignment: flexShifts }
-        : undefined;
+        : {}),
+      // Default true; only pass through when explicitly false to keep the
+      // solver's existing default behavior when the field is absent.
+      ...(staggerStarts === false ? { staggerStarts: false } : {}),
+    };
+    const hasScheduleOptions = Object.keys(scheduleOptions).length > 0;
 
     debugLog(
       "route.ts:POST",
@@ -372,8 +388,9 @@ export async function POST(request: Request) {
       constraints: {
         shifts,
         cubicleCap: cubicleCap ?? DEFAULT_CUBICLE_CAP,
+        scope,
         ...(workLimitations ? { workLimitations } : {}),
-        ...(scheduleOptions ? { scheduleOptions } : {}),
+        ...(hasScheduleOptions ? { scheduleOptions } : {}),
       },
     });
 
@@ -417,8 +434,9 @@ export async function POST(request: Request) {
         await runOptimizationInBackground(runId, {
           shifts,
           cubicleCap: cubicleCap ?? DEFAULT_CUBICLE_CAP,
+          scope,
           ...(workLimitations ? { workLimitations } : {}),
-          ...(scheduleOptions ? { scheduleOptions } : {}),
+          ...(hasScheduleOptions ? { scheduleOptions } : {}),
         });
       } catch (error: unknown) {
         logEvent("optimization.background_fatal", {

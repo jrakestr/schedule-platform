@@ -1,9 +1,5 @@
 import { NextResponse, after, connection } from "next/server";
-import {
-  createWriteClient,
-  getAuthedUser,
-  unauthorizedResponse,
-} from "@/lib/supabase/server";
+import { createWriteClient } from "@/lib/supabase/server";
 import { execFile } from "node:child_process";
 import { existsSync } from "node:fs";
 import { writeFile } from "node:fs/promises";
@@ -327,9 +323,6 @@ async function runOptimizationInBackground(runId: string, constraints: RunConstr
 
 export async function POST(request: Request) {
   await connection();
-
-  const user = await getAuthedUser();
-  if (!user) return unauthorizedResponse();
 
   try {
     const body = await request.json().catch(() => null);

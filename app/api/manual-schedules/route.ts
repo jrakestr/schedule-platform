@@ -3,8 +3,6 @@ import { z } from "zod";
 import {
   createReadClient,
   createWriteClient,
-  getAuthedUser,
-  unauthorizedResponse,
 } from "@/lib/supabase/server";
 
 const DAY_KEYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"] as const;
@@ -54,9 +52,6 @@ export async function GET() {
 }
 
 export async function PUT(req: Request) {
-  const user = await getAuthedUser();
-  if (!user) return unauthorizedResponse();
-
   let body: unknown;
   try {
     body = await req.json();
@@ -78,7 +73,7 @@ export async function PUT(req: Request) {
   const supabase = createWriteClient();
   const { data, error } = await supabase.rpc("bulk_update_manual_schedules", {
     p_updates: parsed.data.updates,
-    p_updated_by: user.email ?? user.id,
+    p_updated_by: null,
   });
 
   if (error) {

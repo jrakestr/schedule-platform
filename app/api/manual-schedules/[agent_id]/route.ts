@@ -1,10 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import {
-  createWriteClient,
-  getAuthedUser,
-  unauthorizedResponse,
-} from "@/lib/supabase/server";
+import { createWriteClient } from "@/lib/supabase/server";
 
 const SHIFT_VALUE_RE = /^(?:OFF|([01]?\d|2[0-3]):[0-5]\d-([01]?\d|2[0-3]):[0-5]\d)$/;
 
@@ -24,9 +20,6 @@ export async function PUT(
   req: Request,
   { params }: { params: Promise<{ agent_id: string }> },
 ) {
-  const user = await getAuthedUser();
-  if (!user) return unauthorizedResponse();
-
   const { agent_id } = await params;
   if (!agent_id) {
     return NextResponse.json({ ok: false, error: "Missing agent_id" }, { status: 400 });
@@ -51,7 +44,7 @@ export async function PUT(
   const { data, error } = await supabase.rpc("update_manual_schedule", {
     p_agent_id: agent_id,
     p_schedule: parsed.data.schedule,
-    p_updated_by: user.email ?? user.id,
+    p_updated_by: null,
   });
 
   if (error) {

@@ -1,17 +1,10 @@
 import { connection, NextRequest, NextResponse } from "next/server";
 import { revalidateTag } from "next/cache";
 import { SNAPSHOT_TAG } from "@/lib/data/snapshot";
-import {
-  createWriteClient,
-  getAuthedUser,
-  unauthorizedResponse,
-} from "@/lib/supabase/server";
+import { createWriteClient } from "@/lib/supabase/server";
 
 export async function DELETE(request: NextRequest) {
   await connection();
-
-  const user = await getAuthedUser();
-  if (!user) return unauthorizedResponse();
 
   try {
     const id = request.nextUrl.searchParams.get("id");
@@ -55,9 +48,6 @@ export async function DELETE(request: NextRequest) {
 // Support POST as a fail-safe fallback for environments with client verb limitations
 export async function POST(request: NextRequest) {
   await connection();
-
-  const user = await getAuthedUser();
-  if (!user) return unauthorizedResponse();
 
   try {
     let id = request.nextUrl.searchParams.get("id");

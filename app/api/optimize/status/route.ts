@@ -1,16 +1,9 @@
 import { connection, NextRequest, NextResponse } from "next/server";
 import { normalizeSnapshotPods } from "@/lib/data/normalize-snapshot";
-import {
-  createWriteClient,
-  getAuthedUser,
-  unauthorizedResponse,
-} from "@/lib/supabase/server";
+import { createWriteClient } from "@/lib/supabase/server";
 
 export async function GET(request: NextRequest) {
   await connection();
-
-  const user = await getAuthedUser();
-  if (!user) return unauthorizedResponse();
 
   try {
     const id = request.nextUrl.searchParams.get("id");

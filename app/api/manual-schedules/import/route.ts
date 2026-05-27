@@ -1,10 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import {
-  createWriteClient,
-  getAuthedUser,
-  unauthorizedResponse,
-} from "@/lib/supabase/server";
+import { createWriteClient } from "@/lib/supabase/server";
 
 const SHIFT_VALUE_RE = /^(?:OFF|([01]?\d|2[0-3]):[0-5]\d-([01]?\d|2[0-3]):[0-5]\d)$/;
 const DAY_HEADERS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"] as const;
@@ -68,9 +64,6 @@ function parseCsv(csv: string): { rows: ParsedRow[]; errors: string[] } {
 }
 
 export async function POST(req: Request) {
-  const user = await getAuthedUser();
-  if (!user) return unauthorizedResponse();
-
   let body: unknown;
   try {
     body = await req.json();
@@ -100,7 +93,7 @@ export async function POST(req: Request) {
   const supabase = createWriteClient();
   const { data, error } = await supabase.rpc("bulk_update_manual_schedules", {
     p_updates: rows,
-    p_updated_by: user.email ?? user.id,
+    p_updated_by: null,
   });
 
   if (error) {

@@ -9,6 +9,7 @@ import { deleteOptimizationRun } from "@/lib/api/optimizer";
 import { Button } from "@/components/ui/button";
 import { LeadSlider } from "@/components/header/lead-slider";
 import { ThemeToggle } from "@/components/header/theme-toggle";
+import { AuthBadge } from "@/components/header/auth-badge";
 import { CommandPalette } from "@/components/header/command-palette";
 import { AnimatedNumber } from "@/components/charts/animated-number";
 import { volumeMatchedShare } from "@/lib/compute/coverage";
@@ -206,6 +207,7 @@ export function SiteHeader({
               )}
               <CommandPalette snapshot={snapshot} onJump={onJump} />
               <ThemeToggle />
+              <AuthBadge />
             </div>
           </div>
         </div>

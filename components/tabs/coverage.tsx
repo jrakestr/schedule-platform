@@ -58,7 +58,7 @@ export function CoverageTab({
   const stats = useMemo(() => {
     const off = snapshot.volume.offered_per_interval.Combined[day];
     const sup = csaSupply(snapshot.agents, day, leadPct);
-    const legacySup = getLegacyCsaSupply(day, leadPct);
+    const legacySup = getLegacyCsaSupply(day);
     const manualSup = manualRosterSupply(snapshot.agents, day);
     const offered = sum(off);
     const staff = sum(sup);

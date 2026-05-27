@@ -137,7 +137,7 @@ export function getIntervalSeries(
       ? offCombined
       : snapshot.volume.offered_per_interval[fn][day];
   const proposedCombined = csaSupply(snapshot.agents, day, leadPct);
-  const legacyCombined = getLegacyCsaSupply(day, leadPct);
+  const legacyCombined = getLegacyCsaSupply(day);
   const manualCombined = manualRosterSupply(snapshot.agents, day);
   const proposed =
     fn === "Combined"
